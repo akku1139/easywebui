@@ -6,6 +6,7 @@ interface Props {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onTogglePin: (id: string) => void;
   onOpenSettings: () => void;
   onOpenMemory: () => void;
   onOpenMCP: () => void;
@@ -13,9 +14,18 @@ interface Props {
 }
 
 export default function Sidebar({
-  conversations, activeId, onSelect, onNew, onDelete,
+  conversations, activeId, onSelect, onNew, onDelete, onTogglePin,
   onOpenSettings, onOpenMemory, onOpenMCP, onLogout
 }: Props) {
+  // Sort conversations: pinned first, then by updatedAt descending
+  const sortedConversations = [...conversations].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return b.updatedAt - a.updatedAt;
+  });
+
+  const pinnedConversations = sortedConversations.filter(c => c.pinned);
+  const unpinnedConversations = sortedConversations.filter(c => !c.pinned);
   return (
     <div className="w-72 h-full bg-gray-900 border-r border-gray-700 flex flex-col">
       {/* Header */}
@@ -33,30 +43,46 @@ export default function Sidebar({
 
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {conversations.map(conv => (
-          <div
-            key={conv.id}
-            className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition ${
-              conv.id === activeId
-                ? 'bg-gray-700/70 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-            }`}
-            onClick={() => onSelect(conv.id)}
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            <span className="flex-1 text-sm truncate">{conv.title}</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
-              className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
+        {/* Pinned Conversations */}
+        {pinnedConversations.length > 0 && (
+          <div className="mb-3">
+            <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              📌 Pinned
+            </div>
+            {pinnedConversations.map(conv => (
+              <ConversationItem
+                key={conv.id}
+                conv={conv}
+                isActive={conv.id === activeId}
+                onSelect={onSelect}
+                onDelete={onDelete}
+                onTogglePin={onTogglePin}
+              />
+            ))}
           </div>
-        ))}
+        )}
+
+        {/* Unpinned Conversations */}
+        {unpinnedConversations.length > 0 && (
+          <div>
+            {pinnedConversations.length > 0 && (
+              <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Recent
+              </div>
+            )}
+            {unpinnedConversations.map(conv => (
+              <ConversationItem
+                key={conv.id}
+                conv={conv}
+                isActive={conv.id === activeId}
+                onSelect={onSelect}
+                onDelete={onDelete}
+                onTogglePin={onTogglePin}
+              />
+            ))}
+          </div>
+        )}
+
         {conversations.length === 0 && (
           <div className="text-center text-gray-500 text-sm py-8">
             No conversations yet
@@ -104,6 +130,59 @@ export default function Sidebar({
           Logout
         </button>
       </div>
+    </div>
+  );
+}
+
+// Conversation Item Component
+interface ConversationItemProps {
+  conv: Conversation;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onTogglePin: (id: string) => void;
+}
+
+function ConversationItem({ conv, isActive, onSelect, onDelete, onTogglePin }: ConversationItemProps) {
+  return (
+    <div
+      className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition ${
+        isActive
+          ? 'bg-gray-700/70 text-white'
+          : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+      }`}
+      onClick={() => onSelect(conv.id)}
+    >
+      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+      </svg>
+      <span className="flex-1 text-sm truncate">{conv.title}</span>
+      
+      {/* Pin Button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onTogglePin(conv.id); }}
+        className={`p-1 transition ${
+          conv.pinned 
+            ? 'text-yellow-400 opacity-100' 
+            : 'opacity-0 group-hover:opacity-100 hover:text-yellow-400'
+        }`}
+        title={conv.pinned ? 'Unpin conversation' : 'Pin conversation'}
+      >
+        <svg className="w-3.5 h-3.5" fill={conv.pinned ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+        </svg>
+      </button>
+
+      {/* Delete Button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+        className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"
+        title="Delete conversation"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
     </div>
   );
 }

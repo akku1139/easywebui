@@ -32,10 +32,12 @@ CREATE TABLE IF NOT EXISTS conversations (
   title TEXT NOT NULL,
   messages_json TEXT NOT NULL DEFAULT '[]',
   model TEXT NOT NULL DEFAULT 'gpt-4o',
+  pinned INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_conv_pinned ON conversations(pinned DESC);
 CREATE INDEX IF NOT EXISTS idx_conv_updated ON conversations(updated_at DESC);
 
 -- MCP Server configurations

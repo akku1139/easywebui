@@ -299,7 +299,7 @@ async function handleSummaries(request: Request, env: Env): Promise<Response> {
 async function handleConversations(request: Request, env: Env): Promise<Response> {
   if (request.method === 'GET') {
     const conversations = await env.AI_CHAT_DB
-      .prepare('SELECT id, title, model, created_at, updated_at FROM conversations ORDER BY updated_at DESC')
+      .prepare('SELECT id, title, model, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC')
       .all();
     return new Response(JSON.stringify(conversations.results), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -307,13 +307,44 @@ async function handleConversations(request: Request, env: Env): Promise<Response
   }
 
   if (request.method === 'POST') {
-    const body = await request.json() as { title: string; messages: unknown[]; model: string };
+    const body = await request.json() as { title: string; messages: unknown[]; model: string; pinned?: boolean };
     const id = crypto.randomUUID();
     await env.AI_CHAT_DB
-      .prepare('INSERT INTO conversations (id, title, messages_json, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(id, body.title, JSON.stringify(body.messages), body.model, Date.now(), Date.now())
+      .prepare('INSERT INTO conversations (id, title, messages_json, model, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, body.title, JSON.stringify(body.messages), body.model, body.pinned ? 1 : 0, Date.now(), Date.now())
       .run();
     return new Response(JSON.stringify({ id, ...body }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+
+  if (request.method === 'PATCH') {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'Missing conversation ID' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+    
+    const body = await request.json() as { pinned?: boolean; title?: string };
+    
+    if (body.pinned !== undefined) {
+      await env.AI_CHAT_DB
+        .prepare('UPDATE conversations SET pinned = ?, updated_at = ? WHERE id = ?')
+        .bind(body.pinned ? 1 : 0, Date.now(), id)
+        .run();
+    }
+    
+    if (body.title !== undefined) {
+      await env.AI_CHAT_DB
+        .prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?')
+        .bind(body.title, Date.now(), id)
+        .run();
+    }
+    
+    return new Response(JSON.stringify({ ok: true }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }

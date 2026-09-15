@@ -42,6 +42,36 @@ describe('Storage Utils', () => {
       expect(loaded[0].title).toBe('Test Chat');
       expect(loaded[0].messages).toHaveLength(1);
     });
+
+    it('should save and load pinned conversations', () => {
+      const conversations: Conversation[] = [
+        {
+          id: 'conv-1',
+          title: 'Pinned Chat',
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          model: 'gpt-4o',
+          pinned: true,
+        },
+        {
+          id: 'conv-2',
+          title: 'Regular Chat',
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          model: 'gpt-4o',
+          pinned: false,
+        }
+      ];
+
+      saveConversations(conversations);
+      const loaded = loadConversations();
+
+      expect(loaded).toHaveLength(2);
+      expect(loaded[0].pinned).toBe(true);
+      expect(loaded[1].pinned).toBe(false);
+    });
   });
 
   describe('Settings', () => {

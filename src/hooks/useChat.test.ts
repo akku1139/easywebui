@@ -78,6 +78,50 @@ describe('useChat', () => {
 
       expect(result.current.activeConversationId).toBe(firstConvId);
     });
+
+    it('should toggle pin on a conversation', () => {
+      const { result } = renderHook(() => useChat(mockSettings));
+
+      act(() => {
+        result.current.createConversation();
+      });
+
+      const convId = result.current.activeConversation!.id;
+      expect(result.current.activeConversation!.pinned).toBeFalsy();
+
+      // Pin the conversation
+      act(() => {
+        result.current.togglePin(convId);
+      });
+
+      expect(result.current.activeConversation!.pinned).toBe(true);
+
+      // Unpin the conversation
+      act(() => {
+        result.current.togglePin(convId);
+      });
+
+      expect(result.current.activeConversation!.pinned).toBe(false);
+    });
+
+    it('should persist pin state in localStorage', () => {
+      const { result } = renderHook(() => useChat(mockSettings));
+
+      act(() => {
+        result.current.createConversation();
+      });
+
+      const convId = result.current.activeConversation!.id;
+
+      act(() => {
+        result.current.togglePin(convId);
+      });
+
+      const stored = localStorage.getItem('ai-chat-conversations');
+      expect(stored).toBeTruthy();
+      const parsed = JSON.parse(stored!);
+      expect(parsed[0].pinned).toBe(true);
+    });
   });
 
   describe('Memory Management', () => {

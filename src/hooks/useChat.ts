@@ -44,6 +44,14 @@ export function useChat(settings: Settings) {
     }
   }, [conversations, activeConversationId]);
 
+  const togglePin = useCallback((id: string) => {
+    const updated = conversations.map(c => 
+      c.id === id ? { ...c, pinned: !c.pinned } : c
+    );
+    setConversations(updated);
+    saveConversations(updated);
+  }, [conversations]);
+
   const buildSystemPrompt = useCallback((): string => {
     const parts: string[] = [];
     
@@ -246,6 +254,7 @@ export function useChat(settings: Settings) {
     setActiveConversationId,
     createConversation,
     deleteConversation,
+    togglePin,
     sendMessage,
     isLoading,
     streamContent,

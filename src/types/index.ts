@@ -89,6 +89,7 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   model: string;
+  pinned?: boolean;
 }
 
 // API Config
