@@ -2,6 +2,73 @@
 
 このプロジェクトには包括的なテストスイートが含まれています。
 
+## ⚠️ 重要: テスト方針
+
+### 新機能実装時のテスト必須ルール
+
+**新しい機能を実装したら、必ずテストも同時に実装してください。**
+
+#### テスト実装のチェックリスト
+
+- [ ] 新機能のユニットテストを追加
+- [ ] 既存機能への影響を確認（既存テストが通る）
+- [ ] エッジケースのテスト（エラー処理、境界値）
+- [ ] 永続化が必要な場合はlocalStorage/D1のテスト
+- [ ] UIコンポーネントの場合はレンダリングテスト
+- [ ] API連携の場合はモックを使ったテスト
+
+#### テストファイルの配置規則
+
+```
+src/
+├── components/
+│   ├── NewComponent.tsx
+│   └── NewComponent.test.tsx  # ← コンポーネントと同じディレクトリ
+├── hooks/
+│   ├── useNewHook.ts
+│   └── useNewHook.test.ts     # ← フックと同じディレクトリ
+├── utils/
+│   ├── newUtil.ts
+│   └── newUtil.test.ts        # ← ユーティリティと同じディレクトリ
+└── test/
+    └── integration.test.ts    # ← 統合テスト
+```
+
+#### テスト命名規則
+
+```typescript
+describe('機能名', () => {
+  it('should 期待する動作を英語で記述', () => {
+    // テスト内容
+  });
+});
+
+// 例
+describe('Pin Feature', () => {
+  it('should toggle pin state on conversation', () => {
+    // ...
+  });
+  
+  it('should persist pin state in localStorage', () => {
+    // ...
+  });
+  
+  it('should display pinned conversations at the top', () => {
+    // ...
+  });
+});
+```
+
+### CI/CDでの自動実行
+
+GitHub Actionsにより、以下のチェックが自動的に実行されます：
+
+1. **TypeScript型チェック** (`npm run typecheck`)
+2. **全テスト実行** (`npm run test:run`)
+3. **ビルド** (`npm run build`)
+
+**テストが失敗するとデプロイされません。**
+
 ## テストの実行
 
 ```bash

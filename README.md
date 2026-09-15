@@ -157,8 +157,62 @@ npx vitest run src/test/prefix-cache.test.ts
 - **API テスト** - OpenAI互換APIとの通信、ツール呼び出し、ストリーミング
 - **ストレージ テスト** - localStorageとのやり取り
 - **認証 テスト** - Basic認証の動作
-- **チャット フック テスト** - メイン機能の動作
+- **チャット フック テスト** - メイン機能の動作（ピン留め含む）
 - **バックエンド テスト** - Cloudflare Workersのロジック
+
+### ⚠️ 新機能実装時のテスト必須ルール
+
+**新しい機能を実装したら、必ずテストも同時に実装してください。**
+
+詳細は [TESTING.md](./TESTING.md#-重要-テスト方針) を参照。
+
+## CI/CD
+
+GitHub Actionsにより、以下のワークフローが自動実行されます。
+
+### CI (`.github/workflows/ci.yml`)
+
+PR作成時・プッシュ時に自動実行：
+
+1. **TypeScript型チェック** - コンパイルエラー検出
+2. **テスト実行** - 全テストスイート
+3. **ビルド** - 本番用ビルド
+
+### Deploy (`.github/workflows/deploy.yml`)
+
+`main`ブランチへのマージ時に自動実行：
+
+1. **テスト & ビルド** - CIと同じチェック
+2. **Cloudflare Pages デプロイ** - フロントエンド
+3. **Cloudflare Workers デプロイ** - バックエンド
+
+### 必要なGitHub Secrets
+
+| Secret | 説明 |
+|--------|------|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare APIトークン |
+| `CLOUDFLARE_ACCOUNT_ID` | CloudflareアカウントID |
+
+### デプロイフロー
+
+```
+PR作成 → CI実行（テスト+型チェック+ビルド）
+    ↓
+mainにマージ → Deploy実行
+    ↓
+Cloudflare Pages + Workers に自動デプロイ
+```
+
+**テストが失敗するとデプロイされません。**
+
+### ローカルでの確認
+
+PR作成前にローカルで確認する場合：
+
+```bash
+# 型チェック + テスト + ビルド を一括実行
+npm run typecheck && npm run test:run && npm run build
+```
 
 ## ライセンス
 
