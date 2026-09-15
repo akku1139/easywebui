@@ -1,0 +1,249 @@
+import { useState, useCallback, useRef } from 'react';
+import { Message, Conversation, UserFact, ConversationSummary, Settings, MCPServer } from '../types';
+import { chatCompletion, extractMemoryFacts, summarizeConversation } from '../utils/api';
+import {
+  loadConversations, saveConversations,
+  loadUserFacts, saveUserFacts,
+  loadSummaries, saveSummaries,
+  generateId
+} from '../utils/storage';
+
+export function useChat(settings: Settings) {
+  const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [streamContent, setStreamContent] = useState('');
+  const [userFacts, setUserFacts] = useState<UserFact[]>(loadUserFacts);
+  const [summaries, setSummaries] = useState<ConversationSummary[]>(loadSummaries);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const activeConversation = conversations.find(c => c.id === activeConversationId) || null;
+
+  const createConversation = useCallback(() => {
+    const newConv: Conversation = {
+      id: generateId(),
+      title: 'New Chat',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      model: settings.apiConfig.model,
+    };
+    const updated = [newConv, ...conversations];
+    setConversations(updated);
+    saveConversations(updated);
+    setActiveConversationId(newConv.id);
+    return newConv;
+  }, [conversations, settings.apiConfig.model]);
+
+  const deleteConversation = useCallback((id: string) => {
+    const updated = conversations.filter(c => c.id !== id);
+    setConversations(updated);
+    saveConversations(updated);
+    if (activeConversationId === id) {
+      setActiveConversationId(updated[0]?.id || null);
+    }
+  }, [conversations, activeConversationId]);
+
+  const buildSystemPrompt = useCallback((): string => {
+    const parts: string[] = [];
+    
+    parts.push('You are a helpful AI assistant.');
+
+    // Layer 2: User Memory (permanent facts)
+    if (settings.memoryEnabled && userFacts.length > 0) {
+      parts.push('\n## User Memory (facts you know about this user):');
+      userFacts.forEach(fact => {
+        parts.push(`- ${fact.content}`);
+      });
+    }
+
+    // Layer 3: Recent conversation summaries
+    if (settings.memoryEnabled && summaries.length > 0) {
+      parts.push('\n## Recent Conversations:');
+      summaries.slice(0, 10).forEach(s => {
+        parts.push(`- ${s.date}: "${s.title}" - ${s.summary}`);
+      });
+    }
+
+    // MCP Tools info
+    const enabledTools = settings.mcpServers
+      .filter(s => s.enabled)
+      .flatMap(s => s.tools);
+    if (enabledTools.length > 0) {
+      parts.push('\n## Available Tools (via MCP):');
+      enabledTools.forEach(tool => {
+        parts.push(`- ${tool.name}: ${tool.description}`);
+      });
+    }
+
+    return parts.join('\n');
+  }, [settings, userFacts, summaries]);
+
+  const sendMessage = useCallback(async (content: string) => {
+    if (!settings.apiConfig.baseUrl || !settings.apiConfig.apiKey) {
+      throw new Error('API configuration is missing. Please configure in Settings.');
+    }
+
+    let conv = activeConversation;
+    if (!conv) {
+      conv = createConversation();
+    }
+
+    const userMessage: Message = {
+      id: generateId(),
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    };
+
+    // Build messages with system prompt
+    const systemPrompt = buildSystemPrompt();
+    const allMessages = [
+      { id: 'system', role: 'system' as const, content: systemPrompt, timestamp: Date.now() },
+      ...conv.messages,
+      userMessage,
+    ];
+
+    // Update conversation with user message
+    const updatedConv: Conversation = {
+      ...conv,
+      messages: [...conv.messages, userMessage],
+      updatedAt: Date.now(),
+      title: conv.messages.length === 0 ? content.slice(0, 50) : conv.title,
+    };
+
+    const updatedConvs = conversations.map(c => c.id === conv!.id ? updatedConv : c);
+    setConversations(updatedConvs);
+    saveConversations(updatedConvs);
+
+    setIsLoading(true);
+    setStreamContent('');
+
+    try {
+      // Get available tools from MCP servers
+      const tools = settings.mcpServers
+        .filter(s => s.enabled && s.status === 'connected')
+        .flatMap(s => s.tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })));
+
+      const result = await chatCompletion(
+        settings.apiConfig,
+        allMessages,
+        tools.length > 0 ? tools : undefined,
+        (chunk) => setStreamContent(prev => prev + chunk)
+      );
+
+      const assistantMessage: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: result.content || streamContent,
+        timestamp: Date.now(),
+        model: settings.apiConfig.model,
+        toolCalls: result.toolCalls,
+      };
+
+      // Final update
+      const finalConv: Conversation = {
+        ...updatedConv,
+        messages: [...updatedConv.messages, assistantMessage],
+        updatedAt: Date.now(),
+      };
+
+      const finalConvs = conversations.map(c => c.id === conv!.id ? finalConv : c);
+      setConversations(finalConvs);
+      saveConversations(finalConvs);
+      setStreamContent('');
+
+      // Auto-extract memory after conversation
+      if (settings.autoMemory && settings.memoryEnabled) {
+        try {
+          const facts = await extractMemoryFacts(settings.apiConfig, [userMessage, assistantMessage]);
+          if (facts.length > 0) {
+            const newFacts: UserFact[] = facts.map(f => ({
+              id: generateId(),
+              content: f,
+              category: 'other' as const,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              source: 'auto_detected' as const,
+            }));
+            const updatedFacts = [...userFacts, ...newFacts];
+            setUserFacts(updatedFacts);
+            saveUserFacts(updatedFacts);
+          }
+        } catch {
+          // Memory extraction failed, continue without it
+        }
+      }
+
+      return assistantMessage;
+    } catch (error) {
+      setStreamContent('');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeConversation, conversations, settings, createConversation, buildSystemPrompt, userFacts, streamContent]);
+
+  const summarizeAndArchive = useCallback(async (convId: string) => {
+    const conv = conversations.find(c => c.id === convId);
+    if (!conv || conv.messages.length === 0) return;
+
+    try {
+      const { title, summary } = await summarizeConversation(settings.apiConfig, conv.messages);
+      const newSummary: ConversationSummary = {
+        id: generateId(),
+        date: new Date(conv.updatedAt).toLocaleDateString(),
+        title,
+        summary,
+        messageCount: conv.messages.length,
+        createdAt: Date.now(),
+      };
+      const updatedSummaries = [newSummary, ...summaries].slice(0, 50);
+      setSummaries(updatedSummaries);
+      saveSummaries(updatedSummaries);
+    } catch {
+      // Summarization failed
+    }
+  }, [conversations, summaries, settings]);
+
+  const addUserFact = useCallback((content: string, category: UserFact['category'] = 'other') => {
+    const fact: UserFact = {
+      id: generateId(),
+      content,
+      category,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      source: 'explicit',
+    };
+    const updated = [...userFacts, fact];
+    setUserFacts(updated);
+    saveUserFacts(updated);
+  }, [userFacts]);
+
+  const removeUserFact = useCallback((id: string) => {
+    const updated = userFacts.filter(f => f.id !== id);
+    setUserFacts(updated);
+    saveUserFacts(updated);
+  }, [userFacts]);
+
+  return {
+    conversations,
+    activeConversation,
+    activeConversationId,
+    setActiveConversationId,
+    createConversation,
+    deleteConversation,
+    sendMessage,
+    isLoading,
+    streamContent,
+    userFacts,
+    summaries,
+    addUserFact,
+    removeUserFact,
+    summarizeAndArchive,
+  };
+}

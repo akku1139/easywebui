@@ -1,0 +1,30 @@
+name = "ai-chat-worker"
+main = "worker.ts"
+compatibility_date = "2024-12-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "AI_CHAT_DB"
+database_name = "ai-chat-db"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# Environment variables (set via wrangler secret or dashboard)
+# BASIC_AUTH_USER = "admin"
+# BASIC_AUTH_PASS = "your-secure-password"
+# OPENAI_API_KEY = "sk-..."
+# OPENAI_BASE_URL = "https://api.openai.com"  # or Cloudflare Workers AI endpoint
+
+[vars]
+OPENAI_BASE_URL = "https://api.openai.com"
+
+# Pages deployment (for frontend)
+# Deploy frontend separately with:
+# npx wrangler pages deploy dist/ --project-name ai-chat
+
+# Development
+[dev]
+port = 8787
+
+# Production triggers
+[triggers]
+crons = []
