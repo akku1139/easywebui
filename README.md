@@ -35,19 +35,22 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Cloudflare Pages                       │
-│              (React Frontend - Vite)                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │  Chat UI  │  │  Memory  │  │MCP Panel │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
-└───────────────────────┬─────────────────────────────────┘
-                        │ HTTPS
-┌───────────────────────▼─────────────────────────────────┐
-│                Cloudflare Workers                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │Basic Auth│  │ Memory   │  │MCP Proxy │              │
-│  │          │  │ Injection│  │          │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
+│              Cloudflare Pages + Functions                │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │         Frontend (React + Vite)                  │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐       │   │
+│  │  │  Chat UI  │  │  Memory  │  │MCP Panel │       │   │
+│  │  └──────────┘  └──────────┘  └──────────┘       │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │      Backend (Pages Functions)                   │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐       │   │
+│  │  │Basic Auth│  │ Memory   │  │MCP Proxy │       │   │
+│  │  │          │  │ Injection│  │          │       │   │
+│  │  └──────────┘  └──────────┘  └──────────┘       │   │
+│  └──────────────────────────────────────────────────┘   │
 └───────────────────────┬─────────────────────────────────┘
                         │
          ┌──────────────┼──────────────┐
@@ -61,57 +64,70 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 
 ## セットアップ
 
-### 1. フロントエンド (Cloudflare Pages)
+### 1. ローカル開発
 
 ```bash
 # 依存関係インストール
 npm install
 
-# 開発サーバー
+# 開発サーバー（フロントエンド + Pages Functions）
 npm run dev
 
 # ビルド
 npm run build
 
-# Cloudflare Pages にデプロイ
-npx wrangler pages deploy dist/ --project-name ai-chat
+# テスト実行
+npm run test:run
 ```
 
-### 2. バックエンド (Cloudflare Workers + D1)
+### 2. Cloudflare デプロイ
+
+#### 初回セットアップ
 
 ```bash
-cd cloudflare
-
 # D1データベース作成
 npx wrangler d1 create ai-chat-db
 
 # スキーマ適用
-npx wrangler d1 execute ai-chat-db --file=schema.sql
+npx wrangler d1 execute ai-chat-db --file=cloudflare/schema.sql
+
+# wrangler.toml.template から wrangler.toml を生成
+# {{D1_DATABASE_ID}} と {{OPENAI_BASE_URL}} を実際の値に置き換え
+sed -e "s|{{D1_DATABASE_ID}}|YOUR_D1_ID|g" \
+    -e "s|{{OPENAI_BASE_URL}}|https://api.openai.com|g" \
+    wrangler.toml.template > wrangler.toml
+
+# Pages プロジェクト作成
+npx wrangler pages project create ai-chat --production-branch main
 
 # シークレット設定
-npx wrangler secret put BASIC_AUTH_USER
-npx wrangler secret put BASIC_AUTH_PASS
-npx wrangler secret put OPENAI_API_KEY
-
-# wrangler.toml の database_id を更新
-
-# デプロイ
-npx wrangler deploy
+npx wrangler pages secret put BASIC_AUTH_USER --project-name ai-chat
+npx wrangler pages secret put BASIC_AUTH_PASS --project-name ai-chat
+npx wrangler pages secret put OPENAI_API_KEY --project-name ai-chat
 ```
 
-### 3. 環境変数
+#### GitHub Actions での自動デプロイ
 
-| 変数 | 説明 |
-|------|------|
+GitHub リポジトリの Settings > Secrets and variables > Actions で以下を設定：
+
+| Secret | 説明 |
+|--------|------|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare APIトークン |
+| `CLOUDFLARE_ACCOUNT_ID` | CloudflareアカウントID |
+| `D1_DATABASE_ID` | D1データベースID |
 | `BASIC_AUTH_USER` | Basic認証ユーザー名 |
 | `BASIC_AUTH_PASS` | Basic認証パスワード |
 | `OPENAI_API_KEY` | OpenAI (または互換API) のキー |
 | `OPENAI_BASE_URL` | APIのベースURL (デフォルト: https://api.openai.com) |
 
+設定後、`main`ブランチにプッシュすると自動的にデプロイされます。
+
 ### Cloudflare Workers AI を使う場合
 
+`OPENAI_BASE_URL` に以下を設定：
+
 ```
-OPENAI_BASE_URL = "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai"
+https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai
 ```
 
 ## デフォルト認証情報（フロントエンドデモ用）
@@ -158,7 +174,8 @@ npx vitest run src/test/prefix-cache.test.ts
 - **ストレージ テスト** - localStorageとのやり取り
 - **認証 テスト** - Basic認証の動作
 - **チャット フック テスト** - メイン機能の動作（ピン留め含む）
-- **バックエンド テスト** - Cloudflare Workersのロジック
+- **コンポーネント テスト** - サイドバーのレンダリング、ピン留めUI
+- **バックエンド テスト** - Cloudflare Pages Functionsのロジック
 
 ### ⚠️ 新機能実装時のテスト必須ルール
 

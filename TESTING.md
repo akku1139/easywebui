@@ -150,9 +150,9 @@ Basic認証の動作をテストします。
 - メッセージ送信
 - システムプロンプトの安定性
 
-### 6. バックエンド テスト (`cloudflare/worker.test.ts`)
+### 6. バックエンド テスト (`functions/api/[[path]].test.ts`)
 
-Cloudflare Workersのバックエンドロジックをテストします。
+Cloudflare Pages Functionsのバックエンドロジックをテストします。
 
 **検証項目:**
 - メモリ注入の順序安定性
@@ -160,6 +160,7 @@ Cloudflare Workersのバックエンドロジックをテストします。
 - 自動メモリ抽出
 - Basic認証
 - CORS設定
+- ピン留め機能のソート
 
 ## テストカバレッジ目標
 

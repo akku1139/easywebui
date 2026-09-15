@@ -1,9 +1,5 @@
-// Cloudflare Worker - AI Chat Backend
-// Deploy with: npx wrangler deploy
-// 
-// Required bindings in wrangler.toml:
-// - D1_DATABASE: AI_CHAT_DB
-// - Environment variables: BASIC_AUTH_USER, BASIC_AUTH_PASS, OPENAI_API_KEY
+// Cloudflare Pages Functions - API Handler
+// This replaces the separate Worker with Pages Functions
 
 export interface Env {
   AI_CHAT_DB: D1Database;
@@ -13,7 +9,78 @@ export interface Env {
   OPENAI_BASE_URL: string;
 }
 
-// Basic Auth middleware
+// Catch-all API route handler
+export const onRequest: PagesFunction<Env> = async (context) => {
+  const { request, env } = context;
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  // Basic Auth check (skip for health check)
+  if (pathname !== '/api/health' && !basicAuth(request, env)) {
+    return new Response('Unauthorized', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Basic realm="AI Chat"',
+        ...corsHeaders,
+      },
+    });
+  }
+
+  // Route handling
+  try {
+    if (pathname === '/api/health') {
+      return jsonResponse({ status: 'ok' });
+    }
+
+    // OpenAI Compatible API proxy
+    if (pathname === '/api/v1/chat/completions') {
+      return await handleChatCompletion(request, env);
+    }
+
+    // Memory API
+    if (pathname === '/api/memory/facts') {
+      return await handleMemoryFacts(request, env);
+    }
+    if (pathname === '/api/memory/summaries') {
+      return await handleSummaries(request, env);
+    }
+
+    // Conversations API
+    if (pathname === '/api/conversations') {
+      return await handleConversations(request, env);
+    }
+
+    // MCP Server proxy
+    if (pathname.startsWith('/api/mcp/')) {
+      return await handleMCP(request, env);
+    }
+
+    return new Response('Not Found', { status: 404, headers: corsHeaders });
+  } catch (error) {
+    return jsonResponse({ error: String(error) }, 500);
+  }
+};
+
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// Helper functions
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  });
+}
+
 function basicAuth(request: Request, env: Env): boolean {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Basic ')) return false;
@@ -22,73 +89,6 @@ function basicAuth(request: Request, env: Env): boolean {
   const [user, pass] = decoded.split(':');
   return user === env.BASIC_AUTH_USER && pass === env.BASIC_AUTH_PASS;
 }
-
-// CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    // Basic Auth check (skip for health check)
-    const url = new URL(request.url);
-    if (url.pathname !== '/health' && !basicAuth(request, env)) {
-      return new Response('Unauthorized', {
-        status: 401,
-        headers: {
-          'WWW-Authenticate': 'Basic realm="AI Chat"',
-          ...corsHeaders,
-        },
-      });
-    }
-
-    // Route handling
-    try {
-      if (url.pathname === '/health') {
-        return new Response(JSON.stringify({ status: 'ok' }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        });
-      }
-
-      // OpenAI Compatible API proxy
-      if (url.pathname === '/v1/chat/completions') {
-        return await handleChatCompletion(request, env);
-      }
-
-      // Memory API
-      if (url.pathname === '/api/memory/facts') {
-        return await handleMemoryFacts(request, env);
-      }
-      if (url.pathname === '/api/memory/summaries') {
-        return await handleSummaries(request, env);
-      }
-
-      // Conversations API
-      if (url.pathname === '/api/conversations') {
-        return await handleConversations(request, env);
-      }
-
-      // MCP Server proxy
-      if (url.pathname.startsWith('/api/mcp/')) {
-        return await handleMCP(request, env);
-      }
-
-      return new Response('Not Found', { status: 404, headers: corsHeaders });
-    } catch (error) {
-      return new Response(JSON.stringify({ error: String(error) }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-  },
-};
 
 // OpenAI Compatible Chat Completions with Memory Injection
 async function handleChatCompletion(request: Request, env: Env): Promise<Response> {
@@ -112,13 +112,13 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
   // Build memory-enhanced system prompt (ChatGPT 4-layer approach)
   const memoryParts: string[] = [];
 
-  // Layer 2: User Facts
+  // Layer 2: User Facts (sorted for prefix cache stability)
   if (facts.results.length > 0) {
     memoryParts.push('## About this user:');
     facts.results.forEach(f => memoryParts.push(`- ${f.content}`));
   }
 
-  // Layer 3: Conversation Summaries
+  // Layer 3: Conversation Summaries (sorted for prefix cache stability)
   if (summaries.results.length > 0) {
     memoryParts.push('\n## Recent conversations:');
     summaries.results.forEach(s => {
@@ -158,7 +158,6 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
     const assistantContent = data.choices?.[0]?.message?.content;
     
     if (assistantContent && body.messages.length > 2) {
-      // Extract and store new facts (fire-and-forget)
       extractAndStoreFacts(env, body.messages, assistantContent).catch(() => {});
     }
   }
@@ -210,7 +209,6 @@ Assistant responded: ${assistantResponse.slice(0, 1000)}`;
 
   // Store new facts in D1
   for (const fact of facts) {
-    // Check if fact already exists
     const existing = await env.AI_CHAT_DB
       .prepare('SELECT id FROM user_facts WHERE content = ?')
       .bind(fact)
@@ -238,9 +236,7 @@ async function handleMemoryFacts(request: Request, env: Env): Promise<Response> 
     const facts = await env.AI_CHAT_DB
       .prepare('SELECT * FROM user_facts ORDER BY updated_at DESC')
       .all();
-    return new Response(JSON.stringify(facts.results), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse(facts.results);
   }
 
   if (request.method === 'POST') {
@@ -250,9 +246,7 @@ async function handleMemoryFacts(request: Request, env: Env): Promise<Response> 
       .prepare('INSERT INTO user_facts (id, content, category, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, body.content, body.category || 'other', 'explicit', Date.now(), Date.now())
       .run();
-    return new Response(JSON.stringify({ id, ...body }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ id, ...body });
   }
 
   if (request.method === 'DELETE') {
@@ -261,9 +255,7 @@ async function handleMemoryFacts(request: Request, env: Env): Promise<Response> 
     if (id) {
       await env.AI_CHAT_DB.prepare('DELETE FROM user_facts WHERE id = ?').bind(id).run();
     }
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ ok: true });
   }
 
   return new Response('Method not allowed', { status: 405, headers: corsHeaders });
@@ -275,9 +267,7 @@ async function handleSummaries(request: Request, env: Env): Promise<Response> {
     const summaries = await env.AI_CHAT_DB
       .prepare('SELECT * FROM conversation_summaries ORDER BY created_at DESC LIMIT 50')
       .all();
-    return new Response(JSON.stringify(summaries.results), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse(summaries.results);
   }
 
   if (request.method === 'POST') {
@@ -287,9 +277,7 @@ async function handleSummaries(request: Request, env: Env): Promise<Response> {
       .prepare('INSERT INTO conversation_summaries (id, title, summary, date, message_count, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, body.title, body.summary, body.date, body.message_count, Date.now())
       .run();
-    return new Response(JSON.stringify({ id, ...body }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ id, ...body });
   }
 
   return new Response('Method not allowed', { status: 405, headers: corsHeaders });
@@ -301,9 +289,7 @@ async function handleConversations(request: Request, env: Env): Promise<Response
     const conversations = await env.AI_CHAT_DB
       .prepare('SELECT id, title, model, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC')
       .all();
-    return new Response(JSON.stringify(conversations.results), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse(conversations.results);
   }
 
   if (request.method === 'POST') {
@@ -313,19 +299,14 @@ async function handleConversations(request: Request, env: Env): Promise<Response
       .prepare('INSERT INTO conversations (id, title, messages_json, model, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(id, body.title, JSON.stringify(body.messages), body.model, body.pinned ? 1 : 0, Date.now(), Date.now())
       .run();
-    return new Response(JSON.stringify({ id, ...body }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ id, ...body });
   }
 
   if (request.method === 'PATCH') {
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
     if (!id) {
-      return new Response(JSON.stringify({ error: 'Missing conversation ID' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+      return jsonResponse({ error: 'Missing conversation ID' }, 400);
     }
     
     const body = await request.json() as { pinned?: boolean; title?: string };
@@ -344,9 +325,7 @@ async function handleConversations(request: Request, env: Env): Promise<Response
         .run();
     }
     
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ ok: true });
   }
 
   return new Response('Method not allowed', { status: 405, headers: corsHeaders });
@@ -358,13 +337,9 @@ async function handleMCP(request: Request, env: Env): Promise<Response> {
   const serverUrl = url.searchParams.get('url');
   
   if (!serverUrl) {
-    return new Response(JSON.stringify({ error: 'Missing server URL' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Missing server URL' }, 400);
   }
 
-  // Proxy MCP requests to the actual server
   const mcpResponse = await fetch(serverUrl, {
     method: request.method,
     headers: {

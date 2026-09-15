@@ -1,34 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * Cloudflare Worker Backend Tests
+ * Cloudflare Pages Functions Backend Tests
  * 
  * These tests verify the backend logic for:
  * 1. Memory injection into system prompts
  * 2. Prefix cache stability
  * 3. Auto memory extraction
  * 4. Conversation summarization
+ * 5. Pin feature
  */
 
-// Mock D1 Database
-const createMockDB = () => ({
-  prepare: vi.fn().mockReturnValue({
-    bind: vi.fn().mockReturnValue({
-      first: vi.fn().mockResolvedValue(null),
-      all: vi.fn().mockResolvedValue({ results: [] }),
-      run: vi.fn().mockResolvedValue({}),
-    }),
-    all: vi.fn().mockResolvedValue({ results: [] }),
-    first: vi.fn().mockResolvedValue(null),
-    run: vi.fn().mockResolvedValue({}),
-  }),
-});
-
-describe('Cloudflare Worker - Memory Injection', () => {
-  let mockDB: ReturnType<typeof createMockDB>;
-
+describe('Pages Functions - Memory Injection', () => {
   beforeEach(() => {
-    mockDB = createMockDB();
     vi.clearAllMocks();
   });
 
@@ -40,7 +24,7 @@ describe('Cloudflare Worker - Memory Injection', () => {
         { content: 'Fact B' },
       ];
 
-      // Simulate the worker's memory injection logic
+      // Simulate the function's memory injection logic
       const memoryParts: string[] = [];
       
       if (facts.length > 0) {
@@ -158,7 +142,7 @@ describe('Cloudflare Worker - Memory Injection', () => {
   });
 
   describe('Auto Memory Extraction', () => {
-    it('should extract facts from conversation', async () => {
+    it('should extract facts from conversation', () => {
       const conversation = [
         { role: 'user', content: 'My name is John and I am a developer' },
         { role: 'assistant', content: 'Nice to meet you, John!' },
@@ -191,7 +175,7 @@ Assistant responded: ${conversation[1].content}`;
   });
 });
 
-describe('Cloudflare Worker - API Routes', () => {
+describe('Pages Functions - API Routes', () => {
   describe('Basic Auth', () => {
     it('should reject requests without auth header', () => {
       const request = {
@@ -227,13 +211,51 @@ describe('Cloudflare Worker - API Routes', () => {
     it('should include proper CORS headers', () => {
       const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       };
 
       expect(corsHeaders['Access-Control-Allow-Origin']).toBe('*');
       expect(corsHeaders['Access-Control-Allow-Methods']).toContain('POST');
+      expect(corsHeaders['Access-Control-Allow-Methods']).toContain('PATCH');
       expect(corsHeaders['Access-Control-Allow-Headers']).toContain('Authorization');
+    });
+  });
+});
+
+describe('Pages Functions - Pin Feature', () => {
+  describe('Conversation Sorting', () => {
+    it('should sort conversations with pinned first', () => {
+      const conversations = [
+        { id: '1', title: 'Old', pinned: false, updated_at: 1000 },
+        { id: '2', title: 'Pinned New', pinned: true, updated_at: 3000 },
+        { id: '3', title: 'Pinned Old', pinned: true, updated_at: 2000 },
+        { id: '4', title: 'Recent', pinned: false, updated_at: 4000 },
+      ];
+
+      // Simulate SQL: ORDER BY pinned DESC, updated_at DESC
+      const sorted = [...conversations].sort((a, b) => {
+        if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+        return b.updated_at - a.updated_at;
+      });
+
+      // Pinned conversations should come first, sorted by updated_at DESC
+      expect(sorted[0].id).toBe('2'); // Pinned New (3000)
+      expect(sorted[1].id).toBe('3'); // Pinned Old (2000)
+      expect(sorted[2].id).toBe('4'); // Recent (4000)
+      expect(sorted[3].id).toBe('1'); // Old (1000)
+    });
+
+    it('should toggle pin state', () => {
+      const conversation = { id: '1', title: 'Test', pinned: false };
+      
+      // Toggle pin
+      const toggled = { ...conversation, pinned: !conversation.pinned };
+      expect(toggled.pinned).toBe(true);
+      
+      // Toggle again
+      const toggledBack = { ...toggled, pinned: !toggled.pinned };
+      expect(toggledBack.pinned).toBe(false);
     });
   });
 });

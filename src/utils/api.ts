@@ -53,7 +53,17 @@ export async function chatCompletion(
     return handleStreamResponse(response, onStream);
   }
 
-  const data = await response.json();
+  const data = await response.json() as {
+    choices: Array<{
+      message: {
+        content: string | null;
+        tool_calls?: Array<{
+          id: string;
+          function: { name: string; arguments: string };
+        }>;
+      };
+    }>;
+  };
   const choice = data.choices[0];
   const message = choice.message;
 
