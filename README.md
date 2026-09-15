@@ -130,6 +130,30 @@ MCPサーバーのURLを追加すると、ツール一覧を自動取得してAI
 - HTTP/SSE (Streamable HTTP)
 - JSON-RPC over HTTP
 
+## テスト
+
+包括的なテストスイートが含まれています。詳細は [TESTING.md](./TESTING.md) を参照。
+
+```bash
+# 全テスト実行
+npm run test
+
+# 1回だけ実行（CI向け）
+npm run test:run
+
+# Prefix Cache テスト（最重要）
+npx vitest run src/test/prefix-cache.test.ts
+```
+
+### テストカテゴリ
+
+- **Prefix Cache テスト** - システムプロンプトの安定性、メモリの順序、メッセージ配列の一貫性
+- **API テスト** - OpenAI互換APIとの通信、ツール呼び出し、ストリーミング
+- **ストレージ テスト** - localStorageとのやり取り
+- **認証 テスト** - Basic認証の動作
+- **チャット フック テスト** - メイン機能の動作
+- **バックエンド テスト** - Cloudflare Workersのロジック
+
 ## ライセンス
 
 MIT

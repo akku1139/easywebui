@@ -50,25 +50,34 @@ export function useChat(settings: Settings) {
     parts.push('You are a helpful AI assistant.');
 
     // Layer 2: User Memory (permanent facts)
+    // IMPORTANT: Sort by id for stable prefix cache
     if (settings.memoryEnabled && userFacts.length > 0) {
       parts.push('\n## User Memory (facts you know about this user):');
-      userFacts.forEach(fact => {
+      const sortedFacts = [...userFacts].sort((a, b) => a.id.localeCompare(b.id));
+      sortedFacts.forEach(fact => {
         parts.push(`- ${fact.content}`);
       });
     }
 
     // Layer 3: Recent conversation summaries
+    // IMPORTANT: Sort by created_at descending for stable prefix cache
     if (settings.memoryEnabled && summaries.length > 0) {
       parts.push('\n## Recent Conversations:');
-      summaries.slice(0, 10).forEach(s => {
+      const sortedSummaries = [...summaries]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 10);
+      sortedSummaries.forEach(s => {
         parts.push(`- ${s.date}: "${s.title}" - ${s.summary}`);
       });
     }
 
     // MCP Tools info
+    // IMPORTANT: Sort by server name and tool name for stable prefix cache
     const enabledTools = settings.mcpServers
       .filter(s => s.enabled)
-      .flatMap(s => s.tools);
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .flatMap(s => s.tools)
+      .sort((a, b) => a.name.localeCompare(b.name));
     if (enabledTools.length > 0) {
       parts.push('\n## Available Tools (via MCP):');
       enabledTools.forEach(tool => {
