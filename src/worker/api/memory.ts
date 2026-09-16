@@ -1,35 +1,37 @@
 import { Context } from 'hono';
 import { Env } from '../index';
+import { drizzle } from 'drizzle-orm/d1';
+import { userFacts, conversationSummaries } from '../../db/schema';
+import { eq, desc } from 'drizzle-orm';
 
 export async function handleMemoryFacts(c: Context<{ Bindings: Env }>) {
-  const db = c.env.AI_CHAT_DB;
+  const db = drizzle(c.env.AI_CHAT_DB);
   const method = c.req.method;
   
   if (method === 'GET') {
-    const facts = await db.prepare('SELECT * FROM user_facts ORDER BY updated_at DESC').all();
-    return c.json(facts.results);
+    const facts = await db.select().from(userFacts).orderBy(desc(userFacts.updatedAt));
+    return c.json(facts);
   }
   
   if (method === 'POST') {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO user_facts (id, content, category, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(
+    const now = new Date();
+    await db.insert(userFacts).values({
       id,
-      body.content,
-      body.category || 'other',
-      'explicit',
-      Date.now(),
-      Date.now()
-    ).run();
+      content: body.content,
+      category: body.category || 'other',
+      source: 'explicit',
+      createdAt: now,
+      updatedAt: now,
+    });
     return c.json({ id, ...body });
   }
   
   if (method === 'DELETE') {
     const id = new URL(c.req.url).searchParams.get('id');
     if (id) {
-      await db.prepare('DELETE FROM user_facts WHERE id = ?').bind(id).run();
+      await db.delete(userFacts).where(eq(userFacts.id, id));
     }
     return c.json({ ok: true });
   }
@@ -38,29 +40,27 @@ export async function handleMemoryFacts(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleSummaries(c: Context<{ Bindings: Env }>) {
-  const db = c.env.AI_CHAT_DB;
+  const db = drizzle(c.env.AI_CHAT_DB);
   const method = c.req.method;
   
   if (method === 'GET') {
-    const summaries = await db.prepare(
-      'SELECT * FROM conversation_summaries ORDER BY created_at DESC LIMIT 50'
-    ).all();
-    return c.json(summaries.results);
+    const summaries = await db.select().from(conversationSummaries)
+      .orderBy(desc(conversationSummaries.createdAt))
+      .limit(50);
+    return c.json(summaries);
   }
   
   if (method === 'POST') {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO conversation_summaries (id, title, summary, date, message_count, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(
+    await db.insert(conversationSummaries).values({
       id,
-      body.title,
-      body.summary,
-      body.date,
-      body.message_count,
-      Date.now()
-    ).run();
+      title: body.title,
+      summary: body.summary,
+      date: body.date,
+      messageCount: body.message_count,
+      createdAt: new Date(),
+    });
     return c.json({ id, ...body });
   }
   

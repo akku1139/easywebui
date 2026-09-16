@@ -1,15 +1,17 @@
 import { Context } from 'hono';
 import { Env } from '../index';
+import { drizzle } from 'drizzle-orm/d1';
+import { apiEndpoints } from '../../db/schema';
+import { eq, desc, asc } from 'drizzle-orm';
 
 export async function handleEndpoints(c: Context<{ Bindings: Env }>) {
-  const db = c.env.AI_CHAT_DB;
+  const db = drizzle(c.env.AI_CHAT_DB);
   const method = c.req.method;
   
   if (method === 'GET') {
-    const endpoints = await db.prepare(
-      'SELECT * FROM api_endpoints ORDER BY is_default DESC, created_at ASC'
-    ).all();
-    return c.json(endpoints.results);
+    const endpoints = await db.select().from(apiEndpoints)
+      .orderBy(desc(apiEndpoints.isDefault), asc(apiEndpoints.createdAt));
+    return c.json(endpoints);
   }
   
   if (method === 'POST') {
@@ -17,21 +19,19 @@ export async function handleEndpoints(c: Context<{ Bindings: Env }>) {
     const id = crypto.randomUUID();
     
     if (body.is_default) {
-      await db.prepare('UPDATE api_endpoints SET is_default = 0').run();
+      await db.update(apiEndpoints).set({ isDefault: false });
     }
     
-    await db.prepare(
-      'INSERT INTO api_endpoints (id, name, base_url, api_key, model, enabled, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
+    await db.insert(apiEndpoints).values({
       id,
-      body.name,
-      body.base_url,
-      body.api_key,
-      body.model,
-      body.enabled ? 1 : 0,
-      body.is_default ? 1 : 0,
-      Date.now()
-    ).run();
+      name: body.name,
+      baseUrl: body.base_url,
+      apiKey: body.api_key,
+      model: body.model,
+      enabled: body.enabled ?? true,
+      isDefault: body.is_default || false,
+      createdAt: new Date(),
+    });
     
     return c.json({ id, ...body });
   }
@@ -45,22 +45,20 @@ export async function handleEndpoints(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json();
     
     if (body.is_default) {
-      await db.prepare('UPDATE api_endpoints SET is_default = 0').run();
+      await db.update(apiEndpoints).set({ isDefault: false });
     }
     
-    const updates: string[] = [];
-    const values: any[] = [];
+    const updates: any = {};
     
-    if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name); }
-    if (body.base_url !== undefined) { updates.push('base_url = ?'); values.push(body.base_url); }
-    if (body.api_key !== undefined) { updates.push('api_key = ?'); values.push(body.api_key); }
-    if (body.model !== undefined) { updates.push('model = ?'); values.push(body.model); }
-    if (body.enabled !== undefined) { updates.push('enabled = ?'); values.push(body.enabled ? 1 : 0); }
-    if (body.is_default !== undefined) { updates.push('is_default = ?'); values.push(body.is_default ? 1 : 0); }
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.base_url !== undefined) updates.baseUrl = body.base_url;
+    if (body.api_key !== undefined) updates.apiKey = body.api_key;
+    if (body.model !== undefined) updates.model = body.model;
+    if (body.enabled !== undefined) updates.enabled = body.enabled;
+    if (body.is_default !== undefined) updates.isDefault = body.is_default;
     
-    if (updates.length > 0) {
-      values.push(id);
-      await db.prepare(`UPDATE api_endpoints SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+    if (Object.keys(updates).length > 0) {
+      await db.update(apiEndpoints).set(updates).where(eq(apiEndpoints.id, id));
     }
     
     return c.json({ ok: true });
@@ -69,7 +67,7 @@ export async function handleEndpoints(c: Context<{ Bindings: Env }>) {
   if (method === 'DELETE') {
     const id = new URL(c.req.url).searchParams.get('id');
     if (id) {
-      await db.prepare('DELETE FROM api_endpoints WHERE id = ?').bind(id).run();
+      await db.delete(apiEndpoints).where(eq(apiEndpoints.id, id));
     }
     return c.json({ ok: true });
   }

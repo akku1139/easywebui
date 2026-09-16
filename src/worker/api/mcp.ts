@@ -1,38 +1,41 @@
 import { Context } from 'hono';
 import { Env } from '../index';
+import { drizzle } from 'drizzle-orm/d1';
+import { mcpServers, oauthStates } from '../../db/schema';
+import { eq, desc } from 'drizzle-orm';
 
 export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
-  const db = c.env.AI_CHAT_DB;
+  const db = drizzle(c.env.AI_CHAT_DB);
   const method = c.req.method;
   
   if (method === 'GET') {
-    const servers = await db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all();
-    return c.json(servers.results);
+    const servers = await db.select().from(mcpServers).orderBy(desc(mcpServers.createdAt));
+    return c.json(servers);
   }
   
   if (method === 'POST') {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    await db.prepare(
-      'INSERT INTO mcp_servers (id, name, url, enabled, tools_json, status, created_at, oauth_enabled, oauth_client_id, oauth_client_secret, oauth_token_endpoint, oauth_auth_endpoint, oauth_access_token, oauth_refresh_token, oauth_token_expires_at, oauth_scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
+    const now = new Date();
+    await db.insert(mcpServers).values({
       id,
-      body.name,
-      body.url,
-      body.enabled ? 1 : 0,
-      JSON.stringify(body.tools || []),
-      body.status || 'disconnected',
-      Date.now(),
-      body.oauthEnabled ? 1 : 0,
-      body.oauthClientId || null,
-      body.oauthClientSecret || null,
-      body.oauthTokenEndpoint || null,
-      body.oauthAuthEndpoint || null,
-      body.oauthAccessToken || null,
-      body.oauthRefreshToken || null,
-      body.oauthTokenExpiresAt || null,
-      body.oauthScopes || null
-    ).run();
+      name: body.name,
+      url: body.url,
+      enabled: body.enabled ?? true,
+      toolsJson: JSON.stringify(body.tools || []),
+      status: body.status || 'disconnected',
+      createdAt: now,
+      oauthEnabled: body.oauthEnabled || false,
+      oauthClientId: body.oauthClientId || null,
+      oauthClientSecret: body.oauthClientSecret || null,
+      oauthTokenEndpoint: body.oauthTokenEndpoint || null,
+      oauthAuthEndpoint: body.oauthAuthEndpoint || null,
+      oauthRegistrationEndpoint: body.oauthRegistrationEndpoint || null,
+      oauthAccessToken: body.oauthAccessToken || null,
+      oauthRefreshToken: body.oauthRefreshToken || null,
+      oauthTokenExpiresAt: body.oauthTokenExpiresAt ? new Date(body.oauthTokenExpiresAt) : null,
+      oauthScopes: body.oauthScopes || null,
+    });
     return c.json({ id, ...body });
   }
   
@@ -43,18 +46,16 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
     }
     
     const body = await c.req.json();
-    const updates: string[] = [];
-    const values: any[] = [];
+    const updates: any = {};
     
-    if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name); }
-    if (body.url !== undefined) { updates.push('url = ?'); values.push(body.url); }
-    if (body.enabled !== undefined) { updates.push('enabled = ?'); values.push(body.enabled ? 1 : 0); }
-    if (body.tools !== undefined) { updates.push('tools_json = ?'); values.push(JSON.stringify(body.tools)); }
-    if (body.status !== undefined) { updates.push('status = ?'); values.push(body.status); }
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.url !== undefined) updates.url = body.url;
+    if (body.enabled !== undefined) updates.enabled = body.enabled;
+    if (body.tools !== undefined) updates.toolsJson = JSON.stringify(body.tools);
+    if (body.status !== undefined) updates.status = body.status;
     
-    if (updates.length > 0) {
-      values.push(id);
-      await db.prepare(`UPDATE mcp_servers SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+    if (Object.keys(updates).length > 0) {
+      await db.update(mcpServers).set(updates).where(eq(mcpServers.id, id));
     }
     
     return c.json({ ok: true });
@@ -63,7 +64,7 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
   if (method === 'DELETE') {
     const id = new URL(c.req.url).searchParams.get('id');
     if (id) {
-      await db.prepare('DELETE FROM mcp_servers WHERE id = ?').bind(id).run();
+      await db.delete(mcpServers).where(eq(mcpServers.id, id));
     }
     return c.json({ ok: true });
   }
@@ -72,15 +73,14 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
 }
 
 export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
-  const db = c.env.AI_CHAT_DB;
+  const db = drizzle(c.env.AI_CHAT_DB);
   const path = new URL(c.req.url).pathname;
   
   if (path === '/api/mcp-oauth/register') {
     const { serverId, registrationEndpoint } = await c.req.json();
     
-    const server = await db.prepare(
-      'SELECT * FROM mcp_servers WHERE id = ?'
-    ).bind(serverId).first() as any;
+    const servers = await db.select().from(mcpServers).where(eq(mcpServers.id, serverId));
+    const server = servers[0];
     
     if (!server) {
       return c.json({ error: 'Server not found' }, 404);
@@ -116,13 +116,12 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
         client_secret?: string;
       };
       
-      await db.prepare(
-        'UPDATE mcp_servers SET oauth_client_id = ?, oauth_client_secret = ? WHERE id = ?'
-      ).bind(
-        registrationData.client_id,
-        registrationData.client_secret || null,
-        serverId
-      ).run();
+      await db.update(mcpServers)
+        .set({
+          oauthClientId: registrationData.client_id,
+          oauthClientSecret: registrationData.client_secret || null,
+        })
+        .where(eq(mcpServers.id, serverId));
       
       return c.json({ 
         success: true,
@@ -138,9 +137,10 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json();
     const { serverId, redirectUri } = body;
     
-    const server = await db.prepare('SELECT * FROM mcp_servers WHERE id = ?').bind(serverId).first() as any;
+    const servers = await db.select().from(mcpServers).where(eq(mcpServers.id, serverId));
+    const server = servers[0];
     
-    if (!server || !server.oauth_enabled) {
+    if (!server || !server.oauthEnabled) {
       return c.json({ error: 'Server not found or OAuth not enabled' }, 404);
     }
     
@@ -149,21 +149,26 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
     const codeChallenge = await generateCodeChallenge(codeVerifier);
     const state = generateState();
     
-    const now = Date.now();
-    const expiresAt = now + 10 * 60 * 1000;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
     
-    await db.prepare(
-      'INSERT INTO oauth_states (id, server_id, state, code_verifier, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(crypto.randomUUID(), serverId, state, codeVerifier, now, expiresAt).run();
+    await db.insert(oauthStates).values({
+      id: crypto.randomUUID(),
+      serverId,
+      state,
+      codeVerifier,
+      createdAt: now,
+      expiresAt,
+    });
     
     const finalRedirectUri = redirectUri || `${new URL(c.req.url).origin}/mcp-oauth-callback`;
     const authUrl = buildAuthorizationUrl(
-      server.oauth_auth_endpoint,
-      server.oauth_client_id,
+      server.oauthAuthEndpoint!,
+      server.oauthClientId!,
       finalRedirectUri,
       state,
       codeChallenge,
-      server.oauth_scopes || undefined
+      server.oauthScopes || undefined
     );
     
     return c.json({ authorizationUrl: authUrl, state });
@@ -178,31 +183,33 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
       return c.json({ error: 'Missing code or state' }, 400);
     }
     
-    const stateData = await db.prepare(
-      'SELECT * FROM oauth_states WHERE state = ? AND expires_at > ?'
-    ).bind(state, Date.now()).first() as any;
+    const now = new Date();
+    const stateRecords = await db.select().from(oauthStates)
+      .where(eq(oauthStates.state, state));
+    const stateData = stateRecords.find(s => s.expiresAt > now);
     
     if (!stateData) {
       return c.json({ error: 'Invalid or expired state' }, 400);
     }
     
-    await db.prepare('DELETE FROM oauth_states WHERE id = ?').bind(stateData.id).run();
+    await db.delete(oauthStates).where(eq(oauthStates.id, stateData.id));
     
-    const server = await db.prepare('SELECT * FROM mcp_servers WHERE id = ?').bind(stateData.server_id).first() as any;
+    const servers = await db.select().from(mcpServers).where(eq(mcpServers.id, stateData.serverId));
+    const server = servers[0];
     
-    if (!server || !server.oauth_token_endpoint) {
+    if (!server || !server.oauthTokenEndpoint) {
       return c.json({ error: 'Server configuration not found' }, 404);
     }
     
-    const tokenResponse = await fetch(server.oauth_token_endpoint, {
+    const tokenResponse = await fetch(server.oauthTokenEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        code_verifier: stateData.code_verifier,
-        client_id: server.oauth_client_id,
-        ...(server.oauth_client_secret ? { client_secret: server.oauth_client_secret } : {}),
+        code_verifier: stateData.codeVerifier,
+        client_id: server.oauthClientId!,
+        ...(server.oauthClientSecret ? { client_secret: server.oauthClientSecret } : {}),
       }).toString(),
     });
     
@@ -211,17 +218,16 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
     }
     
     const tokens = await tokenResponse.json() as any;
-    const expiresAt = tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null;
+    const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000) : null;
     
-    await db.prepare(
-      'UPDATE mcp_servers SET oauth_access_token = ?, oauth_refresh_token = ?, oauth_token_expires_at = ?, oauth_scopes = ? WHERE id = ?'
-    ).bind(
-      tokens.access_token,
-      tokens.refresh_token || null,
-      expiresAt,
-      tokens.scope || null,
-      stateData.server_id
-    ).run();
+    await db.update(mcpServers)
+      .set({
+        oauthAccessToken: tokens.access_token,
+        oauthRefreshToken: tokens.refresh_token || null,
+        oauthTokenExpiresAt: expiresAt,
+        oauthScopes: tokens.scope || null,
+      })
+      .where(eq(mcpServers.id, stateData.serverId));
     
     return c.json({ success: true });
   }

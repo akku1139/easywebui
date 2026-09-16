@@ -47,6 +47,7 @@ export const mcpServers = sqliteTable('mcp_servers', {
   oauthClientSecret: text('oauth_client_secret'),
   oauthTokenEndpoint: text('oauth_token_endpoint'),
   oauthAuthEndpoint: text('oauth_auth_endpoint'),
+  oauthRegistrationEndpoint: text('oauth_registration_endpoint'),
   oauthAccessToken: text('oauth_access_token'),
   oauthRefreshToken: text('oauth_refresh_token'),
   oauthTokenExpiresAt: integer('oauth_token_expires_at', { mode: 'timestamp' }),
@@ -92,4 +93,17 @@ export const oauthStates = sqliteTable('oauth_states', {
   codeVerifier: text('code_verifier').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+});
+
+// User settings (synced across devices)
+export const settings = sqliteTable('settings', {
+  id: text('id').primaryKey(),
+  endpointsJson: text('endpoints_json').notNull().default('[]'),
+  activeEndpointId: text('active_endpoint_id'),
+  memoryEnabled: integer('memory_enabled', { mode: 'boolean' }).notNull().default(true),
+  autoMemory: integer('auto_memory', { mode: 'boolean' }).notNull().default(true),
+  theme: text('theme').notNull().default('system'),
+  customSystemPrompt: text('custom_system_prompt'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
