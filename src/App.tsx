@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
-import { useTheme } from './hooks/useTheme';
+import { useTheme, Theme } from './hooks/useTheme';
 import { loadSettings, saveSettings } from './utils/storage';
 import { Settings } from './types';
 import Sidebar from './components/Sidebar';
@@ -17,8 +17,27 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
 
   useTheme(settings.theme);
+
+  // Resolve theme for conditional rendering
+  useEffect(() => {
+    if (settings.theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      setResolvedTheme(mediaQuery.matches ? 'dark' : 'light');
+      
+      const handleChange = (e: MediaQueryListEvent) => {
+        setResolvedTheme(e.matches ? 'dark' : 'light');
+      };
+      
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    } else {
+      setResolvedTheme(settings.theme);
+    }
+  }, [settings.theme]);
+
   const chat = useChat(settings);
 
   const handleSend = async (content: string) => {
@@ -43,7 +62,7 @@ export default function App() {
 
   return (
     <div className={`h-screen flex overflow-hidden ${
-      settings.theme === 'dark' 
+      resolvedTheme === 'dark' 
         ? 'bg-gray-900 text-white' 
         : 'bg-gray-50 text-gray-900'
     }`}>

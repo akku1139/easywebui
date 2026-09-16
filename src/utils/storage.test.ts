@@ -222,6 +222,36 @@ describe('Storage Utils', () => {
 
       expect(loaded.customSystemPrompt).toBe('You are a helpful coding assistant.');
     });
+
+    it('should save and load system theme', () => {
+      const settings: Settings = {
+        endpoints: [{
+          id: 'test',
+          name: 'Test',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-key',
+          model: 'gpt-4o',
+          enabled: true,
+          createdAt: Date.now(),
+        }],
+        activeEndpointId: 'test',
+        mcpServers: [],
+        memoryEnabled: true,
+        autoMemory: true,
+        theme: 'system',
+        customSystemPrompt: '',
+      };
+
+      saveSettings(settings);
+      const loaded = loadSettings();
+
+      expect(loaded.theme).toBe('system');
+    });
+
+    it('should default to system theme when not set', () => {
+      const settings = loadSettings();
+      expect(settings.theme).toBe('system');
+    });
   });
 
   describe('User Facts (Memory)', () => {

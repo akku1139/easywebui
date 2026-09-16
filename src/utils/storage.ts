@@ -52,7 +52,7 @@ export function loadSettings(): Settings {
     mcpServers: [],
     memoryEnabled: true,
     autoMemory: true,
-    theme: 'dark',
+    theme: 'system',
     customSystemPrompt: '',
   };
 }

@@ -128,6 +128,6 @@ export interface Settings {
   mcpServers: MCPServer[];
   memoryEnabled: boolean;
   autoMemory: boolean;
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'system';
   customSystemPrompt?: string;
 }
