@@ -1,5 +1,4 @@
 import { Message, ToolCall, APIConfig } from '../types';
-import { getAuthHeaders } from './authFetch';
 
 // OpenAI Compatible API client
 export async function chatCompletion(
@@ -36,15 +35,11 @@ export async function chatCompletion(
     }));
   }
 
-  // Add Basic Auth headers if using local proxy
-  const authHeaders = config.baseUrl.startsWith('/api') ? getAuthHeaders() : {};
-
   const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.apiKey}`,
-      ...authHeaders,
     },
     body: JSON.stringify(body),
   });

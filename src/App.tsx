@@ -3,7 +3,6 @@ import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
 import { loadSettings, saveSettings } from './utils/storage';
 import { Settings } from './types';
-import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import MemoryPanel from './components/MemoryPanel';
@@ -13,16 +12,12 @@ import SettingsPanel from './components/SettingsPanel';
 type Panel = 'none' | 'memory' | 'mcp' | 'settings';
 
 export default function App() {
-  const { auth, login, logout } = useAuth();
+  const { auth, logout } = useAuth();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
 
   const chat = useChat(settings);
-
-  if (!auth.isAuthenticated) {
-    return <AuthScreen onLogin={login} />;
-  }
 
   const handleSend = async (content: string) => {
     setChatError('');

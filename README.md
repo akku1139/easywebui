@@ -29,7 +29,8 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 
 ### 🔐 認証
 - Basic認証（1ユーザー）
-- Cloudflare Workers で認証処理
+- Cloudflare Pages Middleware で全ルートに認証を適用
+- ブラウザのネイティブBasic Authダイアログを使用
 
 ### 🌐 複数AIエンドポイント対応
 - 複数のOpenAI互換APIエンドポイントを登録・切り替え
@@ -147,12 +148,18 @@ GitHub リポジトリの Settings > Secrets and variables > Actions で以下�
 | `CLOUDFLARE_API_TOKEN` | Cloudflare APIトークン |
 | `CLOUDFLARE_ACCOUNT_ID` | CloudflareアカウントID |
 | `D1_DATABASE_ID` | D1データベースID |
-| `BASIC_AUTH_USER` | Basic認証ユーザー名 |
-| `BASIC_AUTH_PASS` | Basic認証パスワード |
+| `BASIC_AUTH_USER` | Basic認証ユーザー名（ブラウザのダイアログで入力） |
+| `BASIC_AUTH_PASS` | Basic認証パスワード（ブラウザのダイアログで入力） |
 | `OPENAI_API_KEY` | OpenAI (または互換API) のキー |
 | `OPENAI_BASE_URL` | APIのベースURL (デフォルト: https://api.openai.com) |
 
 設定後、`main`ブランチにプッシュすると自動的にデプロイされます。
+
+**認証フロー:**
+1. ユーザーがアプリにアクセス
+2. ブラウザがネイティブのBasic Authダイアログを表示
+3. 環境変数で設定したユーザー名/パスワードを入力
+4. 認証成功後、アプリが利用可能
 
 ### Cloudflare Workers AI を使う場合
 

@@ -1,5 +1,6 @@
 // Cloudflare Pages Functions - API Handler
 // This replaces the separate Worker with Pages Functions
+// Note: Basic Auth is handled by _middleware.ts for all routes
 
 export interface Env {
   AI_CHAT_DB: D1Database;
@@ -18,17 +19,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
-  }
-
-  // Basic Auth check (skip for health check)
-  if (pathname !== '/api/health' && !basicAuth(request, env)) {
-    return new Response('Unauthorized', {
-      status: 401,
-      headers: {
-        'WWW-Authenticate': 'Basic realm="AI Chat"',
-        ...corsHeaders,
-      },
-    });
   }
 
   // Route handling
@@ -76,12 +66,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleEndpoints(request, env);
     }
 
-    // Auth verify endpoint (for UI login)
-    if (pathname === '/api/auth/verify') {
-      // Basic Auth is already validated above
-      return jsonResponse({ success: true, username: env.BASIC_AUTH_USER });
-    }
-
     return new Response('Not Found', { status: 404, headers: corsHeaders });
   } catch (error) {
     return jsonResponse({ error: String(error) }, 500);
@@ -101,15 +85,6 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
-}
-
-function basicAuth(request: Request, env: Env): boolean {
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Basic ')) return false;
-  
-  const decoded = atob(authHeader.slice(6));
-  const [user, pass] = decoded.split(':');
-  return user === env.BASIC_AUTH_USER && pass === env.BASIC_AUTH_PASS;
 }
 
 // OpenAI Compatible Chat Completions with Memory Injection
