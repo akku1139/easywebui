@@ -26,18 +26,23 @@ const app = new Hono<{ Bindings: Env }>();
 // CORS
 app.use('*', cors());
 
-// Basic Auth
-app.use(
-  '*',
-  basicAuth({
+// Basic Auth (skip OPTIONS requests for CORS preflight)
+app.use('*', async (c, next) => {
+  if (c.req.method === 'OPTIONS') {
+    return await next();
+  }
+  
+  const auth = basicAuth({
     verifyUser: (username, password, c) => {
       return (
         username === c.env.BASIC_AUTH_USER &&
         password === c.env.BASIC_AUTH_PASS
       );
     },
-  })
-);
+  });
+  
+  return auth(c, next);
+});
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }));

@@ -102,6 +102,11 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     const server = servers.find(s => s.id === id);
     if (!server) return;
 
+    // If already connected, don't reconnect
+    if (server.status === 'connected') {
+      return;
+    }
+
     // If OAuth is enabled but not authenticated, start OAuth flow
     if (server.oauthEnabled && !server.oauthAccessToken) {
       await startOAuthFlow(id);
