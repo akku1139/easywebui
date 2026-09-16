@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run typecheck && npm run test:run && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
