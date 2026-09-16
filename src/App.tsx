@@ -3,7 +3,6 @@ import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
 import { loadSettings, saveSettings } from './utils/storage';
 import { Settings } from './types';
-import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import MemoryPanel from './components/MemoryPanel';
@@ -13,7 +12,7 @@ import SettingsPanel from './components/SettingsPanel';
 type Panel = 'none' | 'memory' | 'mcp' | 'settings';
 
 export default function App() {
-  const { auth, login, logout } = useAuth();
+  const { auth, logout } = useAuth();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
@@ -21,7 +20,14 @@ export default function App() {
   const chat = useChat(settings);
 
   if (!auth.isAuthenticated) {
-    return <AuthScreen onLogin={login} />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Authenticating...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSend = async (content: string) => {
