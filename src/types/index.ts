@@ -18,6 +18,16 @@ export interface MCPServer {
   tools: MCPTool[];
   status: 'connected' | 'disconnected' | 'error';
   lastChecked?: number;
+  // OAuth 2.1 fields
+  oauthEnabled?: boolean;
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+  oauthTokenEndpoint?: string;
+  oauthAuthEndpoint?: string;
+  oauthAccessToken?: string;
+  oauthRefreshToken?: string;
+  oauthTokenExpiresAt?: number;
+  oauthScopes?: string;
 }
 
 export interface MCPTool {

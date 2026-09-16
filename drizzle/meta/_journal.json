@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "dialect": "sqlite",
+  "ip": false,
+  "tables": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

@@ -10,6 +10,7 @@ interface Props {
 export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
+  const [editingOAuth, setEditingOAuth] = useState<string | null>(null);
 
   const addServer = () => {
     if (!newUrl.trim()) return;
@@ -20,6 +21,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
       enabled: true,
       tools: [],
       status: 'disconnected',
+      oauthEnabled: false,
     };
     onUpdateServers([...servers, server]);
     setNewUrl('');
@@ -134,6 +136,17 @@ export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
                       Connect
                     </button>
                     <button
+                      onClick={() => setEditingOAuth(server.id)}
+                      className={`px-3 py-1 text-xs rounded-md transition ${
+                        server.oauthEnabled
+                          ? 'bg-green-600 text-white hover:bg-green-500'
+                          : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                      }`}
+                      title="Configure OAuth"
+                    >
+                      🔐 OAuth
+                    </button>
+                    <button
                       onClick={() => toggleServer(server.id)}
                       className={`relative w-10 h-5 rounded-full transition ${
                         server.enabled ? 'bg-purple-500' : 'bg-gray-600'
@@ -170,6 +183,183 @@ export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      {/* OAuth Configuration Modal */}
+      {editingOAuth && (
+        <OAuthModal
+          server={servers.find(s => s.id === editingOAuth)!}
+          onSave={(updates) => {
+            onUpdateServers(servers.map(s => 
+              s.id === editingOAuth ? { ...s, ...updates } : s
+            ));
+            setEditingOAuth(null);
+          }}
+          onClose={() => setEditingOAuth(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// OAuth Configuration Modal
+interface OAuthModalProps {
+  server: MCPServer;
+  onSave: (updates: Partial<MCPServer>) => void;
+  onClose: () => void;
+}
+
+function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
+  const [oauthEnabled, setOauthEnabled] = useState(server.oauthEnabled || false);
+  const [clientId, setClientId] = useState(server.oauthClientId || '');
+  const [clientSecret, setClientSecret] = useState(server.oauthClientSecret || '');
+  const [authEndpoint, setAuthEndpoint] = useState(server.oauthAuthEndpoint || '');
+  const [tokenEndpoint, setTokenEndpoint] = useState(server.oauthTokenEndpoint || '');
+  const [scopes, setScopes] = useState(server.oauthScopes || '');
+  const [discovering, setDiscovering] = useState(false);
+
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    try {
+      const response = await fetch('/api/mcp-oauth/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl: server.url }),
+      });
+
+      if (response.ok) {
+        const data = await response.json() as {
+          authorizationEndpoint: string;
+          tokenEndpoint: string;
+        };
+        setAuthEndpoint(data.authorizationEndpoint);
+        setTokenEndpoint(data.tokenEndpoint);
+      }
+    } catch (error) {
+      console.error('OAuth discovery failed:', error);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const handleSave = () => {
+    onSave({
+      oauthEnabled,
+      oauthClientId: clientId,
+      oauthClientSecret: clientSecret,
+      oauthAuthEndpoint: authEndpoint,
+      oauthTokenEndpoint: tokenEndpoint,
+      oauthScopes: scopes,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+      <div className="w-full max-w-lg bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl">
+        <div className="p-5 border-b border-gray-700">
+          <h3 className="text-lg font-semibold text-white">
+            OAuth 2.1 Configuration
+          </h3>
+          <p className="text-xs text-gray-400 mt-1">
+            Configure OAuth 2.1 authentication for {server.name}
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={oauthEnabled}
+              onChange={e => setOauthEnabled(e.target.checked)}
+              className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500"
+            />
+            <span className="text-sm text-white">Enable OAuth 2.1</span>
+          </label>
+
+          {oauthEnabled && (
+            <>
+              <button
+                onClick={handleDiscover}
+                disabled={discovering}
+                className="w-full px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
+              >
+                {discovering ? 'Discovering...' : '🔍 Auto-discover OAuth endpoints'}
+              </button>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Client ID</label>
+                <input
+                  value={clientId}
+                  onChange={e => setClientId(e.target.value)}
+                  placeholder="your-client-id"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Client Secret (optional)</label>
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={e => setClientSecret(e.target.value)}
+                  placeholder="your-client-secret"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Authorization Endpoint</label>
+                <input
+                  value={authEndpoint}
+                  onChange={e => setAuthEndpoint(e.target.value)}
+                  placeholder="https://auth.example.com/authorize"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Token Endpoint</label>
+                <input
+                  value={tokenEndpoint}
+                  onChange={e => setTokenEndpoint(e.target.value)}
+                  placeholder="https://auth.example.com/token"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Scopes (space-separated)</label>
+                <input
+                  value={scopes}
+                  onChange={e => setScopes(e.target.value)}
+                  placeholder="read write"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <p className="text-xs text-blue-300">
+                  <strong>OAuth 2.1 with PKCE:</strong> This implementation uses OAuth 2.1 with PKCE (Proof Key for Code Exchange) 
+                  as required by the MCP Authorization Specification (2025-06-18). PKCE provides enhanced security for public clients.
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-6 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>

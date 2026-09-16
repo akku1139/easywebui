@@ -60,6 +60,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleMCP(request, env);
     }
 
+    // MCP OAuth endpoints
+    if (pathname === '/api/mcp-oauth/initiate') {
+      return await handleMCPOAuthInitiate(request, env);
+    }
+    if (pathname === '/api/mcp-oauth/callback') {
+      return await handleMCPOAuthCallback(request, env);
+    }
+    if (pathname === '/api/mcp-oauth/discover') {
+      return await handleMCPOAuthDiscover(request, env);
+    }
+
     // API Endpoints management
     if (pathname === '/api/endpoints') {
       return await handleEndpoints(request, env);
@@ -303,6 +314,286 @@ async function handleMemoryFacts(request: Request, env: Env): Promise<Response> 
   }
 
   return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+}
+
+// MCP OAuth 2.1 Handlers
+// Based on MCP Authorization Specification (2025-06-18)
+
+// Initiate OAuth flow for MCP server
+async function handleMCPOAuthInitiate(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+  }
+
+  const body = await request.json() as {
+    serverId: string;
+    redirectUri?: string;
+  };
+
+  const { serverId, redirectUri } = body;
+
+  // Get MCP server configuration
+  const server = await env.AI_CHAT_DB
+    .prepare('SELECT * FROM mcp_servers WHERE id = ?')
+    .bind(serverId)
+    .first<{
+      id: string;
+      url: string;
+      oauth_enabled: number;
+      oauth_client_id: string;
+      oauth_auth_endpoint: string;
+      oauth_scopes: string;
+    }>();
+
+  if (!server) {
+    return jsonResponse({ error: 'MCP server not found' }, 404);
+  }
+
+  if (!server.oauth_enabled) {
+    return jsonResponse({ error: 'OAuth is not enabled for this server' }, 400);
+  }
+
+  if (!server.oauth_auth_endpoint || !server.oauth_client_id) {
+    return jsonResponse({ error: 'OAuth configuration incomplete' }, 400);
+  }
+
+  // Generate PKCE parameters
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const state = generateState();
+
+  // Store state for validation
+  const now = Date.now();
+  const expiresAt = now + 10 * 60 * 1000; // 10 minutes
+
+  await env.AI_CHAT_DB
+    .prepare('INSERT INTO oauth_states (id, server_id, state, code_verifier, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), serverId, state, codeVerifier, now, expiresAt)
+    .run();
+
+  // Build authorization URL
+  const finalRedirectUri = redirectUri || `${new URL(request.url).origin}/mcp-oauth-callback`;
+  const authUrl = buildAuthorizationUrl(
+    server.oauth_auth_endpoint,
+    server.oauth_client_id,
+    finalRedirectUri,
+    state,
+    codeChallenge,
+    server.oauth_scopes || undefined
+  );
+
+  return jsonResponse({
+    authorizationUrl: authUrl,
+    state,
+  });
+}
+
+// Handle OAuth callback
+async function handleMCPOAuthCallback(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+
+  if (error) {
+    return jsonResponse({ error: `OAuth error: ${error}` }, 400);
+  }
+
+  if (!code || !state) {
+    return jsonResponse({ error: 'Missing code or state parameter' }, 400);
+  }
+
+  // Retrieve and validate state
+  const now = Date.now();
+  const stateData = await env.AI_CHAT_DB
+    .prepare('SELECT * FROM oauth_states WHERE state = ? AND expires_at > ?')
+    .bind(state, now)
+    .first<{
+      id: string;
+      server_id: string;
+      code_verifier: string;
+    }>();
+
+  if (!stateData) {
+    return jsonResponse({ error: 'Invalid or expired state' }, 400);
+  }
+
+  // Delete used state
+  await env.AI_CHAT_DB
+    .prepare('DELETE FROM oauth_states WHERE id = ?')
+    .bind(stateData.id)
+    .run();
+
+  // Get MCP server configuration
+  const server = await env.AI_CHAT_DB
+    .prepare('SELECT * FROM mcp_servers WHERE id = ?')
+    .bind(stateData.server_id)
+    .first<{
+      id: string;
+      oauth_client_id: string;
+      oauth_client_secret: string;
+      oauth_token_endpoint: string;
+    }>();
+
+  if (!server || !server.oauth_token_endpoint) {
+    return jsonResponse({ error: 'Server configuration not found' }, 404);
+  }
+
+  // Exchange code for tokens
+  try {
+    const tokenResponse = await fetch(server.oauth_token_endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: stateData.code_verifier,
+        client_id: server.oauth_client_id,
+        ...(server.oauth_client_secret ? { client_secret: server.oauth_client_secret } : {}),
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      return jsonResponse({ error: `Token exchange failed: ${errorText}` }, 400);
+    }
+
+    const tokens = await tokenResponse.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in?: number;
+      scope?: string;
+    };
+
+    const expiresAt = tokens.expires_in
+      ? Date.now() + tokens.expires_in * 1000
+      : null;
+
+    // Update MCP server with tokens
+    await env.AI_CHAT_DB
+      .prepare('UPDATE mcp_servers SET oauth_access_token = ?, oauth_refresh_token = ?, oauth_token_expires_at = ?, oauth_scopes = ? WHERE id = ?')
+      .bind(
+        tokens.access_token,
+        tokens.refresh_token || null,
+        expiresAt,
+        tokens.scope || null,
+        stateData.server_id
+      )
+      .run();
+
+    return jsonResponse({
+      success: true,
+      message: 'OAuth authentication successful',
+    });
+  } catch (error) {
+    return jsonResponse({ error: `Token exchange failed: ${String(error)}` }, 500);
+  }
+}
+
+// Discover OAuth metadata from MCP server
+async function handleMCPOAuthDiscover(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+  }
+
+  const body = await request.json() as { serverUrl: string };
+
+  if (!body.serverUrl) {
+    return jsonResponse({ error: 'Missing serverUrl' }, 400);
+  }
+
+  try {
+    // Try well-known OAuth metadata endpoint
+    const metadataUrl = new URL('/.well-known/oauth-authorization-server', body.serverUrl);
+    const response = await fetch(metadataUrl.toString());
+
+    if (response.ok) {
+      const metadata = await response.json() as {
+        authorization_endpoint?: string;
+        token_endpoint?: string;
+      };
+
+      if (metadata.authorization_endpoint && metadata.token_endpoint) {
+        return jsonResponse({
+          authorizationEndpoint: metadata.authorization_endpoint,
+          tokenEndpoint: metadata.token_endpoint,
+        });
+      }
+    }
+
+    // Fallback: try OpenID Connect discovery
+    const oidcUrl = new URL('/.well-known/openid-configuration', body.serverUrl);
+    const oidcResponse = await fetch(oidcUrl.toString());
+
+    if (oidcResponse.ok) {
+      const oidcMetadata = await oidcResponse.json() as {
+        authorization_endpoint?: string;
+        token_endpoint?: string;
+      };
+
+      if (oidcMetadata.authorization_endpoint && oidcMetadata.token_endpoint) {
+        return jsonResponse({
+          authorizationEndpoint: oidcMetadata.authorization_endpoint,
+          tokenEndpoint: oidcMetadata.token_endpoint,
+        });
+      }
+    }
+
+    return jsonResponse({ error: 'OAuth metadata not found' }, 404);
+  } catch (error) {
+    return jsonResponse({ error: `Discovery failed: ${String(error)}` }, 500);
+  }
+}
+
+// PKCE utility functions
+function generateCodeVerifier(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+function generateState(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+function base64UrlEncode(buffer: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function buildAuthorizationUrl(
+  authEndpoint: string,
+  clientId: string,
+  redirectUri: string,
+  state: string,
+  codeChallenge: string,
+  scopes?: string
+): string {
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+  });
+
+  if (scopes) {
+    params.append('scope', scopes);
+  }
+
+  return `${authEndpoint}?${params.toString()}`;
 }
 
 // Conversation Summaries API

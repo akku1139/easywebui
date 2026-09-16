@@ -22,6 +22,10 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 - 外部MCPサーバーを接続してツールを利用
 - ツール一覧の自動取得
 - OpenAI function calling としてAIに提供
+- **OAuth 2.1認証対応** (MCP Authorization Specification 2025-06-18準拠)
+  - PKCE (Proof Key for Code Exchange) 必須
+  - OAuth metadata自動検出
+  - トークンの自動更新
 
 ### 🔐 認証
 - Basic認証（1ユーザー）
@@ -48,10 +52,10 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 │  └──────────────────────────────────────────────────┘   │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │      Backend (Pages Functions)                   │   │
+│  │      Backend (Pages Functions + Drizzle ORM)     │   │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐       │   │
 │  │  │Basic Auth│  │ Memory   │  │MCP Proxy │       │   │
-│  │  │          │  │ Injection│  │          │       │   │
+│  │  │          │  │ Injection│  │ + OAuth  │       │   │
 │  │  └──────────┘  └──────────┘  └──────────┘       │   │
 │  └──────────────────────────────────────────────────┘   │
 └───────────────────────┬─────────────────────────────────┘
@@ -60,10 +64,35 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
          ▼              ▼              ▼
    ┌──────────┐  ┌──────────┐  ┌──────────┐
    │  D1 DB   │  │ OpenAI   │  │MCP Server│
-   │(Memory,  │  │Compatible│  │ (Tools)  │
-   │ Sessions)│  │   API    │  │          │
+   │(Drizzle  │  │Compatible│  │ + OAuth  │
+   │  ORM)    │  │   API    │  │   2.1    │
    └──────────┘  └──────────┘  └──────────┘
 ```
+
+## データベースマイグレーション
+
+Drizzle ORMを使用してデータベーススキーマを管理しています。
+
+### マイグレーションの生成
+
+```bash
+# スキーマ変更後にマイグレーションファイルを生成
+npm run db:generate
+```
+
+### マイグレーションの実行
+
+```bash
+# ローカル環境
+npm run db:migrate
+
+# 本番環境
+npm run db:migrate:prod
+```
+
+### GitHub Actionsでの自動マイグレーション
+
+`main`ブランチへのプッシュ時に、GitHub Actionsが自動的にマイグレーションを実行します。
 
 ## セットアップ
 

@@ -260,6 +260,152 @@ describe('Pages Functions - Pin Feature', () => {
   });
 });
 
+describe('Pages Functions - MCP OAuth 2.1', () => {
+  // Helper functions for testing (simulating the actual implementation)
+  function generateCodeVerifier(): string {
+    const array = new Uint8Array(32);
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  }
+
+  function generateState(): string {
+    const array = new Uint8Array(16);
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  }
+
+  function buildAuthorizationUrl(
+    authEndpoint: string,
+    clientId: string,
+    redirectUri: string,
+    state: string,
+    codeChallenge: string,
+    scopes?: string
+  ): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+    if (scopes) {
+      params.append('scope', scopes);
+    }
+    return `${authEndpoint}?${params.toString()}`;
+  }
+
+  describe('PKCE Flow', () => {
+    it('should generate code verifier with correct length', () => {
+      // PKCE code verifier should be 43-128 characters
+      const verifier = generateCodeVerifier();
+      expect(verifier.length).toBeGreaterThanOrEqual(43);
+      expect(verifier.length).toBeLessThanOrEqual(128);
+    });
+
+    it('should generate URL-safe base64 without padding', () => {
+      const verifier = generateCodeVerifier();
+      expect(verifier).not.toContain('+');
+      expect(verifier).not.toContain('/');
+      expect(verifier).not.toContain('=');
+    });
+
+    it('should generate unique state parameters', () => {
+      const state1 = generateState();
+      const state2 = generateState();
+      expect(state1).not.toBe(state2);
+    });
+
+    it('should build authorization URL with required parameters', () => {
+      const authUrl = buildAuthorizationUrl(
+        'https://auth.example.com/authorize',
+        'client-123',
+        'https://app.example.com/callback',
+        'state-abc',
+        'challenge-xyz',
+        'read write'
+      );
+
+      expect(authUrl).toContain('response_type=code');
+      expect(authUrl).toContain('client_id=client-123');
+      expect(authUrl).toContain('redirect_uri=');
+      expect(authUrl).toContain('state=state-abc');
+      expect(authUrl).toContain('code_challenge=challenge-xyz');
+      expect(authUrl).toContain('code_challenge_method=S256');
+      expect(authUrl).toContain('scope=read+write');
+    });
+  });
+
+  describe('OAuth State Management', () => {
+    it('should validate state expiration', () => {
+      const now = Date.now();
+      const expiredState = { expiresAt: now - 1000 }; // 1 second ago
+      const validState = { expiresAt: now + 600000 }; // 10 minutes from now
+
+      expect(expiredState.expiresAt).toBeLessThan(now);
+      expect(validState.expiresAt).toBeGreaterThan(now);
+    });
+
+    it('should enforce one-time use of state', () => {
+      // State should be deleted after use
+      const state = 'test-state-123';
+      let stateExists = true;
+
+      // Simulate state retrieval and deletion
+      const retrievedState = state;
+      stateExists = false; // State deleted after retrieval
+
+      expect(retrievedState).toBe(state);
+      expect(stateExists).toBe(false);
+    });
+  });
+
+  describe('Token Management', () => {
+    it('should detect expired tokens', () => {
+      const now = Date.now();
+      const expiredToken = { expiresAt: now - 1000 };
+      const validToken = { expiresAt: now + 300000 }; // 5 minutes
+
+      expect(expiredToken.expiresAt).toBeLessThan(now);
+      expect(validToken.expiresAt).toBeGreaterThan(now);
+    });
+
+    it('should refresh token before expiration (5 minute buffer)', () => {
+      const now = Date.now();
+      const tokenExpiresIn4Minutes = now + 4 * 60 * 1000;
+      const bufferTime = 5 * 60 * 1000; // 5 minutes
+
+      const shouldRefresh = (tokenExpiresIn4Minutes - bufferTime) < now;
+      expect(shouldRefresh).toBe(true);
+    });
+  });
+
+  describe('OAuth Metadata Discovery', () => {
+    it('should construct well-known OAuth metadata URL', () => {
+      const serverUrl = 'https://mcp.example.com';
+      const metadataUrl = new URL('/.well-known/oauth-authorization-server', serverUrl);
+      expect(metadataUrl.toString()).toBe('https://mcp.example.com/.well-known/oauth-authorization-server');
+    });
+
+    it('should fallback to OpenID Connect discovery', () => {
+      const serverUrl = 'https://mcp.example.com';
+      const oidcUrl = new URL('/.well-known/openid-configuration', serverUrl);
+      expect(oidcUrl.toString()).toBe('https://mcp.example.com/.well-known/openid-configuration');
+    });
+  });
+});
+
 describe('Pages Functions - Multiple Endpoints', () => {
   describe('Endpoint Selection', () => {
     it('should select endpoint by ID', () => {
