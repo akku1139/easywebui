@@ -60,6 +60,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleMCP(request, env);
     }
 
+    // API Endpoints management
+    if (pathname === '/api/endpoints') {
+      return await handleEndpoints(request, env);
+    }
+
     return new Response('Not Found', { status: 404, headers: corsHeaders });
   } catch (error) {
     return jsonResponse({ error: String(error) }, 500);
@@ -97,7 +102,44 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
     model?: string;
     stream?: boolean;
     tools?: unknown[];
+    endpoint_id?: string;
   };
+
+  // Get endpoint configuration
+  let endpointConfig = {
+    baseUrl: env.OPENAI_BASE_URL || 'https://api.openai.com',
+    apiKey: env.OPENAI_API_KEY,
+    model: body.model || 'gpt-4o',
+  };
+
+  // If endpoint_id is provided, use that endpoint from DB
+  if (body.endpoint_id) {
+    const endpoint = await env.AI_CHAT_DB
+      .prepare('SELECT * FROM api_endpoints WHERE id = ? AND enabled = 1')
+      .bind(body.endpoint_id)
+      .first<{ base_url: string; api_key: string; model: string }>();
+    
+    if (endpoint) {
+      endpointConfig = {
+        baseUrl: endpoint.base_url,
+        apiKey: endpoint.api_key,
+        model: endpoint.model,
+      };
+    }
+  } else {
+    // Use default endpoint from DB if available
+    const defaultEndpoint = await env.AI_CHAT_DB
+      .prepare('SELECT * FROM api_endpoints WHERE is_default = 1 AND enabled = 1 LIMIT 1')
+      .first<{ base_url: string; api_key: string; model: string }>();
+    
+    if (defaultEndpoint) {
+      endpointConfig = {
+        baseUrl: defaultEndpoint.base_url,
+        apiKey: defaultEndpoint.api_key,
+        model: defaultEndpoint.model,
+      };
+    }
+  }
 
   // Fetch user memory facts from D1
   const facts = await env.AI_CHAT_DB
@@ -141,14 +183,16 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
   }
 
   // Proxy to OpenAI-compatible endpoint
-  const baseUrl = env.OPENAI_BASE_URL || 'https://api.openai.com';
-  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+  const response = await fetch(`${endpointConfig.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${endpointConfig.apiKey}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      model: endpointConfig.model,
+    }),
   });
 
   // Auto-extract memory after response (non-blocking)
@@ -158,7 +202,7 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
     const assistantContent = data.choices?.[0]?.message?.content;
     
     if (assistantContent && body.messages.length > 2) {
-      extractAndStoreFacts(env, body.messages, assistantContent).catch(() => {});
+      extractAndStoreFacts(env, endpointConfig, body.messages, assistantContent).catch(() => {});
     }
   }
 
@@ -174,6 +218,7 @@ async function handleChatCompletion(request: Request, env: Env): Promise<Respons
 // Extract facts from conversation using LLM
 async function extractAndStoreFacts(
   env: Env,
+  endpointConfig: { baseUrl: string; apiKey: string; model: string },
   messages: Array<{ role: string; content: string }>,
   assistantResponse: string
 ): Promise<void> {
@@ -184,12 +229,11 @@ async function extractAndStoreFacts(
 User said: ${userMessages.slice(0, 2000)}
 Assistant responded: ${assistantResponse.slice(0, 1000)}`;
 
-  const baseUrl = env.OPENAI_BASE_URL || 'https://api.openai.com';
-  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+  const response = await fetch(`${endpointConfig.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${endpointConfig.apiKey}`,
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
@@ -355,4 +399,103 @@ async function handleMCP(request: Request, env: Env): Promise<Response> {
       ...corsHeaders,
     },
   });
+}
+
+// API Endpoints management
+async function handleEndpoints(request: Request, env: Env): Promise<Response> {
+  if (request.method === 'GET') {
+    const endpoints = await env.AI_CHAT_DB
+      .prepare('SELECT * FROM api_endpoints ORDER BY is_default DESC, created_at ASC')
+      .all();
+    return jsonResponse(endpoints.results);
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json() as {
+      name: string;
+      base_url: string;
+      api_key: string;
+      model: string;
+      enabled?: boolean;
+      is_default?: boolean;
+    };
+    const id = crypto.randomUUID();
+    
+    // If this is set as default, unset other defaults
+    if (body.is_default) {
+      await env.AI_CHAT_DB
+        .prepare('UPDATE api_endpoints SET is_default = 0')
+        .run();
+    }
+    
+    await env.AI_CHAT_DB
+      .prepare('INSERT INTO api_endpoints (id, name, base_url, api_key, model, enabled, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(
+        id,
+        body.name,
+        body.base_url,
+        body.api_key,
+        body.model,
+        body.enabled ? 1 : 0,
+        body.is_default ? 1 : 0,
+        Date.now()
+      )
+      .run();
+    return jsonResponse({ id, ...body });
+  }
+
+  if (request.method === 'PATCH') {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) {
+      return jsonResponse({ error: 'Missing endpoint ID' }, 400);
+    }
+    
+    const body = await request.json() as {
+      name?: string;
+      base_url?: string;
+      api_key?: string;
+      model?: string;
+      enabled?: boolean;
+      is_default?: boolean;
+    };
+    
+    // If setting as default, unset other defaults
+    if (body.is_default) {
+      await env.AI_CHAT_DB
+        .prepare('UPDATE api_endpoints SET is_default = 0')
+        .run();
+    }
+    
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    
+    if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name); }
+    if (body.base_url !== undefined) { updates.push('base_url = ?'); values.push(body.base_url); }
+    if (body.api_key !== undefined) { updates.push('api_key = ?'); values.push(body.api_key); }
+    if (body.model !== undefined) { updates.push('model = ?'); values.push(body.model); }
+    if (body.enabled !== undefined) { updates.push('enabled = ?'); values.push(body.enabled ? 1 : 0); }
+    if (body.is_default !== undefined) { updates.push('is_default = ?'); values.push(body.is_default ? 1 : 0); }
+    
+    if (updates.length > 0) {
+      values.push(id);
+      await env.AI_CHAT_DB
+        .prepare(`UPDATE api_endpoints SET ${updates.join(', ')} WHERE id = ?`)
+        .bind(...values as string[])
+        .run();
+    }
+    
+    return jsonResponse({ ok: true });
+  }
+
+  if (request.method === 'DELETE') {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (id) {
+      await env.AI_CHAT_DB.prepare('DELETE FROM api_endpoints WHERE id = ?').bind(id).run();
+    }
+    return jsonResponse({ ok: true });
+  }
+
+  return new Response('Method not allowed', { status: 405, headers: corsHeaders });
 }

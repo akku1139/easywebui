@@ -75,7 +75,16 @@ function buildMessages(
 
 describe('Prefix Cache Stability', () => {
   const baseSettings: Settings = {
-    apiConfig: { baseUrl: 'https://api.openai.com', apiKey: 'test', model: 'gpt-4o' },
+    endpoints: [{
+      id: 'test',
+      name: 'Test',
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'test',
+      model: 'gpt-4o',
+      enabled: true,
+      createdAt: Date.now(),
+    }],
+    activeEndpointId: 'test',
     mcpServers: [],
     memoryEnabled: true,
     autoMemory: true,

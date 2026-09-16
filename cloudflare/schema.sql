@@ -71,3 +71,18 @@ CREATE TABLE IF NOT EXISTS memory_extraction_log (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );
+
+-- API Endpoints
+CREATE TABLE IF NOT EXISTS api_endpoints (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  api_key TEXT NOT NULL,
+  model TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_endpoints_enabled ON api_endpoints(enabled);
+CREATE INDEX IF NOT EXISTS idx_endpoints_default ON api_endpoints(is_default);

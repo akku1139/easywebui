@@ -27,8 +27,11 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 - Basic認証（1ユーザー）
 - Cloudflare Workers で認証処理
 
-### 🌐 OpenAI Compatible API
-- OpenAI, Cloudflare Workers AI, Azure OpenAI, ローカルLLM等に対応
+### 🌐 複数AIエンドポイント対応
+- 複数のOpenAI互換APIエンドポイントを登録・切り替え
+- OpenAI, Claude, Cloudflare Workers AI, Azure OpenAI, Ollama等に対応
+- エンドポイントごとに異なるAPIキー・モデルを設定可能
+- デフォルトエンドポイントの設定
 - ストリーミングレスポンス対応
 
 ## アーキテクチャ

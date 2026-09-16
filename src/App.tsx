@@ -91,14 +91,21 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 rounded-lg border border-gray-700">
-              <div className={`w-2 h-2 rounded-full ${
-                settings.apiConfig.baseUrl ? 'bg-green-400' : 'bg-red-400'
-              }`} />
-              <span className="text-xs text-gray-400">
-                {settings.apiConfig.model || 'No model'}
-              </span>
-            </div>
+            {(() => {
+              const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId) 
+                || settings.endpoints.find(e => e.isDefault)
+                || settings.endpoints[0];
+              return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className={`w-2 h-2 rounded-full ${
+                    activeEndpoint?.baseUrl ? 'bg-green-400' : 'bg-red-400'
+                  }`} />
+                  <span className="text-xs text-gray-400">
+                    {activeEndpoint ? `${activeEndpoint.name} (${activeEndpoint.model})` : 'No endpoint'}
+                  </span>
+                </div>
+              );
+            })()}
             {settings.memoryEnabled && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 rounded-lg border border-amber-500/20">
                 <span className="text-xs text-amber-400">🧠 Memory ON</span>

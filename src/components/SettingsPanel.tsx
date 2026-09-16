@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Settings } from '../types';
-import { saveSettings } from '../utils/storage';
+import { Settings, APIEndpoint } from '../types';
+import { saveSettings, generateId } from '../utils/storage';
 
 interface Props {
   settings: Settings;
@@ -10,6 +10,8 @@ interface Props {
 
 export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
   const [local, setLocal] = useState<Settings>({ ...settings });
+  const [editingEndpoint, setEditingEndpoint] = useState<APIEndpoint | null>(null);
+  const [showAddEndpoint, setShowAddEndpoint] = useState(false);
 
   const handleSave = () => {
     onUpdate(local);
@@ -17,9 +19,47 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
     onClose();
   };
 
+  const addEndpoint = (endpoint: Omit<APIEndpoint, 'id' | 'createdAt'>) => {
+    const newEndpoint: APIEndpoint = {
+      ...endpoint,
+      id: generateId(),
+      createdAt: Date.now(),
+    };
+    const updatedEndpoints = [...local.endpoints, newEndpoint];
+    const updatedSettings = {
+      ...local,
+      endpoints: updatedEndpoints,
+      activeEndpointId: local.activeEndpointId || newEndpoint.id,
+    };
+    setLocal(updatedSettings);
+    setShowAddEndpoint(false);
+  };
+
+  const updateEndpoint = (id: string, updates: Partial<APIEndpoint>) => {
+    const updatedEndpoints = local.endpoints.map(e => 
+      e.id === id ? { ...e, ...updates } : e
+    );
+    setLocal({ ...local, endpoints: updatedEndpoints });
+    setEditingEndpoint(null);
+  };
+
+  const deleteEndpoint = (id: string) => {
+    const updatedEndpoints = local.endpoints.filter(e => e.id !== id);
+    const updatedSettings = {
+      ...local,
+      endpoints: updatedEndpoints,
+      activeEndpointId: local.activeEndpointId === id ? null : local.activeEndpointId,
+    };
+    setLocal(updatedSettings);
+  };
+
+  const setActiveEndpoint = (id: string) => {
+    setLocal({ ...local, activeEndpointId: id });
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-lg max-h-[80vh] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col">
+      <div className="w-full max-w-2xl max-h-[90vh] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-700">
           <div className="flex items-center gap-3">
@@ -40,45 +80,83 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          {/* API Configuration */}
+          {/* API Endpoints */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-              </svg>
-              API Configuration
-            </h3>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Base URL (OpenAI Compatible)</label>
-              <input
-                value={local.apiConfig.baseUrl}
-                onChange={e => setLocal({ ...local, apiConfig: { ...local.apiConfig, baseUrl: e.target.value } })}
-                placeholder="https://api.openai.com"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Supports: OpenAI, Cloudflare Workers AI, Azure OpenAI, local LLMs, etc.
-              </p>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                </svg>
+                API Endpoints
+              </h3>
+              <button
+                onClick={() => setShowAddEndpoint(true)}
+                className="px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+              >
+                + Add Endpoint
+              </button>
             </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">API Key</label>
-              <input
-                type="password"
-                value={local.apiConfig.apiKey}
-                onChange={e => setLocal({ ...local, apiConfig: { ...local.apiConfig, apiKey: e.target.value } })}
-                placeholder="sk-..."
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Model</label>
-              <input
-                value={local.apiConfig.model}
-                onChange={e => setLocal({ ...local, apiConfig: { ...local.apiConfig, model: e.target.value } })}
-                placeholder="gpt-4o"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
+
+            {local.endpoints.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                No endpoints configured. Add an API endpoint to get started.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {local.endpoints.map(endpoint => (
+                  <div
+                    key={endpoint.id}
+                    className={`p-3 rounded-lg border transition ${
+                      local.activeEndpointId === endpoint.id
+                        ? 'bg-blue-500/10 border-blue-500/30'
+                        : 'bg-gray-700/50 border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${
+                          endpoint.baseUrl && endpoint.apiKey ? 'bg-green-400' : 'bg-red-400'
+                        }`} />
+                        <span className="text-sm font-medium text-white">{endpoint.name}</span>
+                        {local.activeEndpointId === endpoint.id && (
+                          <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">Active</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {local.activeEndpointId !== endpoint.id && (
+                          <button
+                            onClick={() => setActiveEndpoint(endpoint.id)}
+                            className="px-2 py-1 text-xs bg-gray-600 text-gray-200 rounded hover:bg-gray-500 transition"
+                          >
+                            Activate
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditingEndpoint(endpoint)}
+                          className="p-1 text-gray-400 hover:text-white transition"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => deleteEndpoint(endpoint.id)}
+                          className="p-1 text-gray-400 hover:text-red-400 transition"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <div>URL: {endpoint.baseUrl || '(not set)'}</div>
+                      <div>Model: {endpoint.model}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Memory Settings */}
@@ -114,29 +192,6 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
               </div>
             </label>
           </div>
-
-          {/* Architecture Info */}
-          <div className="p-3 bg-gray-700/50 rounded-lg border border-gray-600">
-            <h4 className="text-xs font-medium text-gray-300 mb-2">Memory Architecture (ChatGPT-style)</h4>
-            <div className="space-y-1.5 text-xs text-gray-400">
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 bg-blue-500/30 rounded text-center text-[10px] leading-4">1</span>
-                <span>Session Metadata — device, timezone, preferences</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 bg-green-500/30 rounded text-center text-[10px] leading-4">2</span>
-                <span>User Facts — permanent stored knowledge</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 bg-purple-500/30 rounded text-center text-[10px] leading-4">3</span>
-                <span>Conversation Summaries — recent chat summaries</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 bg-orange-500/30 rounded text-center text-[10px] leading-4">4</span>
-                <span>Current Session — full message history</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
@@ -154,6 +209,133 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
             Save Settings
           </button>
         </div>
+      </div>
+
+      {/* Add/Edit Endpoint Modal */}
+      {(showAddEndpoint || editingEndpoint) && (
+        <EndpointModal
+          endpoint={editingEndpoint}
+          onSave={(data) => {
+            if (editingEndpoint) {
+              updateEndpoint(editingEndpoint.id, data);
+            } else {
+              addEndpoint(data);
+            }
+          }}
+          onClose={() => {
+            setShowAddEndpoint(false);
+            setEditingEndpoint(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Endpoint Modal Component
+interface EndpointModalProps {
+  endpoint: APIEndpoint | null;
+  onSave: (data: Omit<APIEndpoint, 'id' | 'createdAt'>) => void;
+  onClose: () => void;
+}
+
+function EndpointModal({ endpoint, onSave, onClose }: EndpointModalProps) {
+  const [name, setName] = useState(endpoint?.name || '');
+  const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl || '');
+  const [apiKey, setApiKey] = useState(endpoint?.apiKey || '');
+  const [model, setModel] = useState(endpoint?.model || 'gpt-4o');
+  const [isDefault, setIsDefault] = useState(endpoint?.isDefault || false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      name: name || 'Unnamed Endpoint',
+      baseUrl,
+      apiKey,
+      model,
+      enabled: true,
+      isDefault,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+      <div className="w-full max-w-lg bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl">
+        <div className="p-5 border-b border-gray-700">
+          <h3 className="text-lg font-semibold text-white">
+            {endpoint ? 'Edit Endpoint' : 'Add Endpoint'}
+          </h3>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Name</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g., OpenAI, Claude, Local LLM"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Base URL (OpenAI Compatible)</label>
+            <input
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              placeholder="https://api.openai.com"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Supports: OpenAI, Cloudflare Workers AI, Azure OpenAI, Ollama, etc.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">API Key</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="sk-..."
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Model</label>
+            <input
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              placeholder="gpt-4o"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isDefault}
+              onChange={e => setIsDefault(e.target.checked)}
+              className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+            />
+            <span className="text-sm text-white">Set as default endpoint</span>
+          </label>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition"
+            >
+              {endpoint ? 'Update' : 'Add'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

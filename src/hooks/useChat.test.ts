@@ -5,11 +5,17 @@ import { Settings } from '../types';
 
 describe('useChat', () => {
   const mockSettings: Settings = {
-    apiConfig: {
+    endpoints: [{
+      id: 'test-endpoint',
+      name: 'Test',
       baseUrl: 'https://api.openai.com',
       apiKey: 'test-key',
       model: 'gpt-4o',
-    },
+      enabled: true,
+      isDefault: true,
+      createdAt: Date.now(),
+    }],
+    activeEndpointId: 'test-endpoint',
     mcpServers: [],
     memoryEnabled: true,
     autoMemory: false, // Disable auto memory for simpler tests
@@ -124,6 +130,78 @@ describe('useChat', () => {
     });
   });
 
+  describe('Multiple Endpoints', () => {
+    const multiEndpointSettings: Settings = {
+      endpoints: [
+        {
+          id: 'endpoint-1',
+          name: 'OpenAI',
+          baseUrl: 'https://api.openai.com',
+          apiKey: 'key-1',
+          model: 'gpt-4o',
+          enabled: true,
+          isDefault: true,
+          createdAt: Date.now(),
+        },
+        {
+          id: 'endpoint-2',
+          name: 'Claude',
+          baseUrl: 'https://api.anthropic.com',
+          apiKey: 'key-2',
+          model: 'claude-3-opus',
+          enabled: true,
+          createdAt: Date.now(),
+        },
+      ],
+      activeEndpointId: 'endpoint-1',
+      mcpServers: [],
+      memoryEnabled: true,
+      autoMemory: false,
+      theme: 'dark',
+    };
+
+    it('should use active endpoint for new conversations', () => {
+      const { result } = renderHook(() => useChat(multiEndpointSettings));
+
+      act(() => {
+        result.current.createConversation();
+      });
+
+      expect(result.current.activeConversation!.model).toBe('gpt-4o');
+    });
+
+    it('should switch to different endpoint when activeEndpointId changes', () => {
+      const settingsWithClaude: Settings = {
+        ...multiEndpointSettings,
+        activeEndpointId: 'endpoint-2',
+      };
+
+      const { result } = renderHook(() => useChat(settingsWithClaude));
+
+      act(() => {
+        result.current.createConversation();
+      });
+
+      expect(result.current.activeConversation!.model).toBe('claude-3-opus');
+    });
+
+    it('should fallback to default endpoint when activeEndpointId is invalid', () => {
+      const settingsWithInvalidActive: Settings = {
+        ...multiEndpointSettings,
+        activeEndpointId: 'non-existent',
+      };
+
+      const { result } = renderHook(() => useChat(settingsWithInvalidActive));
+
+      act(() => {
+        result.current.createConversation();
+      });
+
+      // Should fallback to the default endpoint (OpenAI)
+      expect(result.current.activeConversation!.model).toBe('gpt-4o');
+    });
+  });
+
   describe('Memory Management', () => {
     it('should add user facts', () => {
       const { result } = renderHook(() => useChat(mockSettings));
@@ -173,7 +251,16 @@ describe('useChat', () => {
     it('should throw error when API config is missing', async () => {
       const settingsWithoutApi: Settings = {
         ...mockSettings,
-        apiConfig: { baseUrl: '', apiKey: '', model: 'gpt-4o' },
+        endpoints: [{
+          id: 'empty',
+          name: 'Empty',
+          baseUrl: '',
+          apiKey: '',
+          model: 'gpt-4o',
+          enabled: true,
+          createdAt: Date.now(),
+        }],
+        activeEndpointId: 'empty',
       };
 
       const { result } = renderHook(() => useChat(settingsWithoutApi));

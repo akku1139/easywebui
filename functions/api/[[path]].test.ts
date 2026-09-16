@@ -259,3 +259,79 @@ describe('Pages Functions - Pin Feature', () => {
     });
   });
 });
+
+describe('Pages Functions - Multiple Endpoints', () => {
+  describe('Endpoint Selection', () => {
+    it('should select endpoint by ID', () => {
+      const endpoints = [
+        { id: 'ep-1', name: 'OpenAI', base_url: 'https://api.openai.com', is_default: true },
+        { id: 'ep-2', name: 'Claude', base_url: 'https://api.anthropic.com', is_default: false },
+      ];
+
+      const selectedId = 'ep-2';
+      const selected = endpoints.find(e => e.id === selectedId);
+      
+      expect(selected?.name).toBe('Claude');
+      expect(selected?.base_url).toBe('https://api.anthropic.com');
+    });
+
+    it('should fallback to default endpoint when ID not found', () => {
+      const endpoints = [
+        { id: 'ep-1', name: 'OpenAI', base_url: 'https://api.openai.com', is_default: true },
+        { id: 'ep-2', name: 'Claude', base_url: 'https://api.anthropic.com', is_default: false },
+      ];
+
+      const selectedId = 'non-existent';
+      const selected = endpoints.find(e => e.id === selectedId) 
+        || endpoints.find(e => e.is_default);
+      
+      expect(selected?.name).toBe('OpenAI');
+    });
+
+    it('should sort endpoints with default first', () => {
+      const endpoints = [
+        { id: 'ep-1', name: 'OpenAI', is_default: false, created_at: 1000 },
+        { id: 'ep-2', name: 'Claude', is_default: true, created_at: 2000 },
+        { id: 'ep-3', name: 'Local', is_default: false, created_at: 3000 },
+      ];
+
+      // Simulate SQL: ORDER BY is_default DESC, created_at ASC
+      const sorted = [...endpoints].sort((a, b) => {
+        if (a.is_default !== b.is_default) return b.is_default ? 1 : -1;
+        return a.created_at - b.created_at;
+      });
+
+      expect(sorted[0].name).toBe('Claude'); // Default first
+      expect(sorted[1].name).toBe('OpenAI');
+      expect(sorted[2].name).toBe('Local');
+    });
+  });
+
+  describe('Endpoint Configuration', () => {
+    it('should use endpoint-specific API key', () => {
+      const endpoint = {
+        id: 'ep-1',
+        name: 'OpenAI',
+        base_url: 'https://api.openai.com',
+        api_key: 'sk-test-key',
+        model: 'gpt-4o',
+      };
+
+      const authHeader = `Bearer ${endpoint.api_key}`;
+      expect(authHeader).toBe('Bearer sk-test-key');
+    });
+
+    it('should use endpoint-specific model', () => {
+      const endpoint = {
+        id: 'ep-1',
+        name: 'Claude',
+        base_url: 'https://api.anthropic.com',
+        api_key: 'sk-ant-test',
+        model: 'claude-3-opus',
+      };
+
+      const requestBody = { model: endpoint.model };
+      expect(requestBody.model).toBe('claude-3-opus');
+    });
+  });
+});

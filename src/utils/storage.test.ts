@@ -79,16 +79,21 @@ describe('Storage Utils', () => {
       const settings = loadSettings();
       expect(settings.memoryEnabled).toBe(true);
       expect(settings.autoMemory).toBe(true);
-      expect(settings.apiConfig.model).toBe('gpt-4o');
+      expect(settings.endpoints).toEqual([]);
     });
 
     it('should save and load settings', () => {
       const settings: Settings = {
-        apiConfig: {
+        endpoints: [{
+          id: 'test',
+          name: 'Test',
           baseUrl: 'https://api.example.com',
           apiKey: 'test-key',
           model: 'gpt-4o-mini',
-        },
+          enabled: true,
+          createdAt: Date.now(),
+        }],
+        activeEndpointId: 'test',
         mcpServers: [],
         memoryEnabled: false,
         autoMemory: false,
@@ -98,10 +103,73 @@ describe('Storage Utils', () => {
       saveSettings(settings);
       const loaded = loadSettings();
 
-      expect(loaded.apiConfig.baseUrl).toBe('https://api.example.com');
-      expect(loaded.apiConfig.apiKey).toBe('test-key');
+      expect(loaded.endpoints[0].baseUrl).toBe('https://api.example.com');
+      expect(loaded.endpoints[0].apiKey).toBe('test-key');
       expect(loaded.memoryEnabled).toBe(false);
       expect(loaded.theme).toBe('light');
+    });
+
+    it('should save and load multiple endpoints', () => {
+      const settings: Settings = {
+        endpoints: [
+          {
+            id: 'ep-1',
+            name: 'OpenAI',
+            baseUrl: 'https://api.openai.com',
+            apiKey: 'key-1',
+            model: 'gpt-4o',
+            enabled: true,
+            isDefault: true,
+            createdAt: Date.now(),
+          },
+          {
+            id: 'ep-2',
+            name: 'Claude',
+            baseUrl: 'https://api.anthropic.com',
+            apiKey: 'key-2',
+            model: 'claude-3-opus',
+            enabled: true,
+            createdAt: Date.now(),
+          },
+        ],
+        activeEndpointId: 'ep-1',
+        mcpServers: [],
+        memoryEnabled: true,
+        autoMemory: true,
+        theme: 'dark',
+      };
+
+      saveSettings(settings);
+      const loaded = loadSettings();
+
+      expect(loaded.endpoints).toHaveLength(2);
+      expect(loaded.endpoints[0].name).toBe('OpenAI');
+      expect(loaded.endpoints[1].name).toBe('Claude');
+      expect(loaded.activeEndpointId).toBe('ep-1');
+    });
+
+    it('should migrate from old apiConfig format', () => {
+      // Simulate old format
+      const oldSettings = {
+        apiConfig: {
+          baseUrl: 'https://api.openai.com',
+          apiKey: 'old-key',
+          model: 'gpt-4',
+        },
+        mcpServers: [],
+        memoryEnabled: true,
+        autoMemory: true,
+        theme: 'dark',
+      };
+
+      localStorage.setItem('ai-chat-settings', JSON.stringify(oldSettings));
+      const loaded = loadSettings();
+
+      expect(loaded.endpoints).toHaveLength(1);
+      expect(loaded.endpoints[0].baseUrl).toBe('https://api.openai.com');
+      expect(loaded.endpoints[0].apiKey).toBe('old-key');
+      expect(loaded.endpoints[0].model).toBe('gpt-4');
+      expect(loaded.endpoints[0].name).toBe('Default');
     });
   });
 

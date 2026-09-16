@@ -92,7 +92,19 @@ export interface Conversation {
   pinned?: boolean;
 }
 
-// API Config
+// API Endpoint
+export interface APIEndpoint {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  enabled: boolean;
+  isDefault?: boolean;
+  createdAt: number;
+}
+
+// API Config (for backward compatibility)
 export interface APIConfig {
   baseUrl: string;
   apiKey: string;
@@ -101,7 +113,8 @@ export interface APIConfig {
 
 // Settings
 export interface Settings {
-  apiConfig: APIConfig;
+  endpoints: APIEndpoint[];
+  activeEndpointId: string | null;
   mcpServers: MCPServer[];
   memoryEnabled: boolean;
   autoMemory: boolean;

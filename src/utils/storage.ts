@@ -21,13 +21,33 @@ export function saveConversations(conversations: Conversation[]) {
 // Settings
 export function loadSettings(): Settings {
   const data = localStorage.getItem(STORAGE_KEYS.settings);
-  if (data) return JSON.parse(data);
+  if (data) {
+    const parsed = JSON.parse(data);
+    // Migrate from old format
+    if (parsed.apiConfig && !parsed.endpoints) {
+      return {
+        endpoints: [{
+          id: generateId(),
+          name: 'Default',
+          baseUrl: parsed.apiConfig.baseUrl,
+          apiKey: parsed.apiConfig.apiKey,
+          model: parsed.apiConfig.model,
+          enabled: true,
+          isDefault: true,
+          createdAt: Date.now(),
+        }],
+        activeEndpointId: null,
+        mcpServers: parsed.mcpServers || [],
+        memoryEnabled: parsed.memoryEnabled ?? true,
+        autoMemory: parsed.autoMemory ?? true,
+        theme: parsed.theme || 'dark',
+      };
+    }
+    return parsed;
+  }
   return {
-    apiConfig: {
-      baseUrl: '',
-      apiKey: '',
-      model: 'gpt-4o',
-    },
+    endpoints: [],
+    activeEndpointId: null,
     mcpServers: [],
     memoryEnabled: true,
     autoMemory: true,

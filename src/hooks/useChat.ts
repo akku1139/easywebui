@@ -18,6 +18,11 @@ export function useChat(settings: Settings) {
   const abortRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find(c => c.id === activeConversationId) || null;
+  
+  // Get active endpoint
+  const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId) 
+    || settings.endpoints.find(e => e.isDefault)
+    || settings.endpoints[0];
 
   const createConversation = useCallback(() => {
     const newConv: Conversation = {
@@ -26,14 +31,14 @@ export function useChat(settings: Settings) {
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      model: settings.apiConfig.model,
+      model: activeEndpoint?.model || 'gpt-4o',
     };
     const updated = [newConv, ...conversations];
     setConversations(updated);
     saveConversations(updated);
     setActiveConversationId(newConv.id);
     return newConv;
-  }, [conversations, settings.apiConfig.model]);
+  }, [conversations, activeEndpoint?.model]);
 
   const deleteConversation = useCallback((id: string) => {
     const updated = conversations.filter(c => c.id !== id);
@@ -97,7 +102,10 @@ export function useChat(settings: Settings) {
   }, [settings, userFacts, summaries]);
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!settings.apiConfig.baseUrl || !settings.apiConfig.apiKey) {
+    if (!activeEndpoint) {
+      throw new Error('No active endpoint. Please configure an API endpoint in Settings.');
+    }
+    if (!activeEndpoint.baseUrl || !activeEndpoint.apiKey) {
       throw new Error('API configuration is missing. Please configure in Settings.');
     }
 
@@ -147,7 +155,7 @@ export function useChat(settings: Settings) {
         })));
 
       const result = await chatCompletion(
-        settings.apiConfig,
+        { baseUrl: activeEndpoint.baseUrl, apiKey: activeEndpoint.apiKey, model: activeEndpoint.model },
         allMessages,
         tools.length > 0 ? tools : undefined,
         (chunk) => setStreamContent(prev => prev + chunk)
@@ -158,7 +166,7 @@ export function useChat(settings: Settings) {
         role: 'assistant',
         content: result.content || streamContent,
         timestamp: Date.now(),
-        model: settings.apiConfig.model,
+        model: activeEndpoint.model,
         toolCalls: result.toolCalls,
       };
 
@@ -177,7 +185,10 @@ export function useChat(settings: Settings) {
       // Auto-extract memory after conversation
       if (settings.autoMemory && settings.memoryEnabled) {
         try {
-          const facts = await extractMemoryFacts(settings.apiConfig, [userMessage, assistantMessage]);
+          const facts = await extractMemoryFacts(
+            { baseUrl: activeEndpoint.baseUrl, apiKey: activeEndpoint.apiKey, model: activeEndpoint.model },
+            [userMessage, assistantMessage]
+          );
           if (facts.length > 0) {
             const newFacts: UserFact[] = facts.map(f => ({
               id: generateId(),
@@ -203,14 +214,17 @@ export function useChat(settings: Settings) {
     } finally {
       setIsLoading(false);
     }
-  }, [activeConversation, conversations, settings, createConversation, buildSystemPrompt, userFacts, streamContent]);
+  }, [activeConversation, conversations, settings, activeEndpoint, createConversation, buildSystemPrompt, userFacts, streamContent]);
 
   const summarizeAndArchive = useCallback(async (convId: string) => {
     const conv = conversations.find(c => c.id === convId);
     if (!conv || conv.messages.length === 0) return;
 
     try {
-      const { title, summary } = await summarizeConversation(settings.apiConfig, conv.messages);
+      const { title, summary } = await summarizeConversation(
+        { baseUrl: activeEndpoint.baseUrl, apiKey: activeEndpoint.apiKey, model: activeEndpoint.model },
+        conv.messages
+      );
       const newSummary: ConversationSummary = {
         id: generateId(),
         date: new Date(conv.updatedAt).toLocaleDateString(),
@@ -225,7 +239,7 @@ export function useChat(settings: Settings) {
     } catch {
       // Summarization failed
     }
-  }, [conversations, summaries, settings]);
+  }, [conversations, summaries, activeEndpoint]);
 
   const addUserFact = useCallback((content: string, category: UserFact['category'] = 'other') => {
     const fact: UserFact = {
