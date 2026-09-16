@@ -247,5 +247,245 @@ describe('Chat API', () => {
         })
       );
     });
+
+    it('should handle thinking content in response', async () => {
+      // Mock fetch for OpenAI API with thinking content
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(JSON.stringify({
+              choices: [{ 
+                message: { 
+                  content: 'Hello!',
+                  thinking: 'Let me think about this...'
+                } 
+              }]
+            })));
+            controller.close();
+          }
+        }),
+        clone: function() { return this; },
+        json: () => Promise.resolve({
+          choices: [{ 
+            message: { 
+              content: 'Hello!',
+              thinking: 'Let me think about this...'
+            } 
+          }]
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'user', content: 'Hi' }
+          ],
+          model: 'gpt-4o',
+          stream: false,
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.choices[0].message.content).toBe('Hello!');
+      expect(data.choices[0].message.thinking).toBe('Let me think about this...');
+    });
+
+    it('should handle tool calls in response', async () => {
+      // Mock fetch for OpenAI API with tool calls
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(JSON.stringify({
+              choices: [{ 
+                message: { 
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call_123',
+                      type: 'function',
+                      function: {
+                        name: 'search',
+                        arguments: '{"query": "test"}'
+                      }
+                    }
+                  ]
+                } 
+              }]
+            })));
+            controller.close();
+          }
+        }),
+        clone: function() { return this; },
+        json: () => Promise.resolve({
+          choices: [{ 
+            message: { 
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: {
+                    name: 'search',
+                    arguments: '{"query": "test"}'
+                  }
+                }
+              ]
+            } 
+          }]
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'user', content: 'Search for something' }
+          ],
+          model: 'gpt-4o',
+          stream: false,
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'search',
+                description: 'Search the web',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    query: { type: 'string' }
+                  },
+                  required: ['query']
+                }
+              }
+            }
+          ]
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.choices[0].message.tool_calls).toBeDefined();
+      expect(data.choices[0].message.tool_calls).toHaveLength(1);
+      expect(data.choices[0].message.tool_calls[0].function.name).toBe('search');
+      expect(data.choices[0].message.tool_calls[0].function.arguments).toBe('{"query": "test"}');
+    });
+
+    it('should handle streaming response with thinking', async () => {
+      // Mock fetch for OpenAI API with streaming thinking
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            const encoder = new TextEncoder();
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"thinking":"Let me think"}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"thinking":" about this..."}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hello!"}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          }
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'user', content: 'Hi' }
+          ],
+          model: 'gpt-4o',
+          stream: true,
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    });
+
+    it('should handle streaming response with tool calls', async () => {
+      // Mock fetch for OpenAI API with streaming tool calls
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+        body: new ReadableStream({
+          start(controller) {
+            const encoder = new TextEncoder();
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"search","arguments":""}}]}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"query\\""}}]}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":": \\"test\\"}"}}]}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          }
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'user', content: 'Search for something' }
+          ],
+          model: 'gpt-4o',
+          stream: true,
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'search',
+                description: 'Search the web',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    query: { type: 'string' }
+                  },
+                  required: ['query']
+                }
+              }
+            }
+          ]
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    });
   });
 });

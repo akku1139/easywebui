@@ -101,6 +101,145 @@ describe('MCP OAuth API', () => {
       
       expect(res.status).toBe(500);
     });
+
+    it('should include registration_endpoint in response', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          authorization_endpoint: 'https://auth.example.com/authorize',
+          token_endpoint: 'https://auth.example.com/token',
+          registration_endpoint: 'https://auth.example.com/register',
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/mcp-oauth/discover', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serverUrl: 'https://mcp.example.com' }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.registrationEndpoint).toBe('https://auth.example.com/register');
+    });
+  });
+
+  describe('POST /api/mcp-oauth/register', () => {
+    it('should register client dynamically', async () => {
+      const db = env.AI_CHAT_DB as any;
+      db._addData('mcp_servers', {
+        id: 'server-1',
+        name: 'OAuth Server',
+        url: 'http://localhost:3001',
+        enabled: 1,
+        tools_json: '[]',
+        status: 'disconnected',
+        created_at: Date.now(),
+        oauth_enabled: 1,
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          client_id: 'registered-client-id',
+          client_secret: 'registered-client-secret',
+        }),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/mcp-oauth/register', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          serverId: 'server-1',
+          registrationEndpoint: 'https://auth.example.com/register'
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.success).toBe(true);
+      expect(data.clientId).toBe('registered-client-id');
+
+      // Verify client registration was called
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example.com/register',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('client_name'),
+        })
+      );
+
+      // Verify client credentials were saved to database
+      const servers = db._getData('mcp_servers');
+      expect(servers[0].oauth_client_id).toBe('registered-client-id');
+      expect(servers[0].oauth_client_secret).toBe('registered-client-secret');
+    });
+
+    it('should return 404 when server not found for registration', async () => {
+      const req = new Request('http://localhost/api/mcp-oauth/register', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          serverId: 'non-existent',
+          registrationEndpoint: 'https://auth.example.com/register'
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(404);
+    });
+
+    it('should handle registration failure', async () => {
+      const db = env.AI_CHAT_DB as any;
+      db._addData('mcp_servers', {
+        id: 'server-1',
+        name: 'OAuth Server',
+        url: 'http://localhost:3001',
+        enabled: 1,
+        tools_json: '[]',
+        status: 'disconnected',
+        created_at: Date.now(),
+        oauth_enabled: 1,
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        text: () => Promise.resolve('Registration failed'),
+      });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/mcp-oauth/register', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          serverId: 'server-1',
+          registrationEndpoint: 'https://auth.example.com/register'
+        }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(400);
+    });
   });
 
   describe('POST /api/mcp-oauth/initiate', () => {
@@ -117,6 +256,62 @@ describe('MCP OAuth API', () => {
       const res = await app.fetch(req, env);
       
       expect(res.status).toBe(404);
+    });
+
+    it('should auto-register client if no client_id exists', async () => {
+      const db = env.AI_CHAT_DB as any;
+      db._addData('mcp_servers', {
+        id: 'server-1',
+        name: 'OAuth Server',
+        url: 'http://localhost:3001',
+        enabled: 1,
+        tools_json: '[]',
+        status: 'disconnected',
+        created_at: Date.now(),
+        oauth_enabled: 1,
+        oauth_client_id: null, // No client_id
+        oauth_registration_endpoint: 'https://auth.example.com/register',
+        oauth_auth_endpoint: 'https://auth.example.com/authorize',
+        oauth_token_endpoint: 'https://auth.example.com/token',
+      });
+
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            client_id: 'auto-registered-client-id',
+          }),
+        });
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/mcp-oauth/initiate', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serverId: 'server-1' }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.authorizationUrl).toBeDefined();
+      expect(data.authorizationUrl).toContain('auto-registered-client-id');
+
+      // Verify client registration was called
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example.com/register',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('client_name'),
+        })
+      );
+
+      // Verify client_id was saved to database
+      const servers = db._getData('mcp_servers');
+      expect(servers[0].oauth_client_id).toBe('auto-registered-client-id');
     });
 
     it('should initiate OAuth flow with PKCE', async () => {
