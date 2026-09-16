@@ -74,6 +74,11 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 
 Drizzle ORMを使用してデータベーススキーマを管理しています。**マイグレーションファイルは絶対に手動で書かず、Drizzle Kitで自動生成します。**
 
+### ビルドスクリプト
+
+- **`npm run build`**: マイグレーション生成 + フロントエンドビルド + Workerビルド（ローカル開発用）
+- **`npm run build:main`**: フロントエンドビルド + Workerビルドのみ（CI用、マイグレーション生成なし）
+
 ### マイグレーションの生成
 
 スキーマ（`src/db/schema.ts`）を変更した後、以下のコマンドでマイグレーションファイルを生成します：
@@ -88,8 +93,6 @@ npm run db:generate
 
 ### マイグレーションの実行
 
-**重要**: マイグレーションは手動で実行する必要があります。CI/CDでは自動実行されません。
-
 #### ローカル環境
 
 ```bash
@@ -99,20 +102,22 @@ npm run db:migrate
 #### 本番環境（Cloudflare D1）
 
 ```bash
-# 本番環境のD1データベースにマイグレーションを適用
+npm run db:migrate:prod
+```
+
+または、個別のマイグレーションファイルを適用：
+
+```bash
 wrangler d1 execute ai-chat-db --remote --file=./drizzle/<migration-file>.sql
 ```
 
-または、Drizzle Kitのmigrateコマンドを使用：
+### GitHub Actionsでの自動マイグレーション
 
-```bash
-npm run db:migrate:prod
-```
+`ai-chat-web-ui-development-7ac5e`ブランチへのデプロイ時に、GitHub Actionsが自動的に`drizzle/`ディレクトリ内のすべてのマイグレーションファイルをD1に適用します。
 
 ### 注意事項
 
 - **絶対に手動でマイグレーションファイルを書かないでください**: 必ず`npm run db:generate`で生成してください
-- **CI/CDではマイグレーションは実行されません**: デプロイ前に手動でマイグレーションを実行してください
 - **生成されたマイグレーションファイルはコミットしてください**: `drizzle/`ディレクトリの内容をGitにコミットしてください
 - **本番環境への適用は慎重に**: 本番環境のデータベースにマイグレーションを適用する前に、必ずバックアップを取ってください
 

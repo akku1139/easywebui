@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/build-worker.js",
+    "build": "drizzle-kit generate && vite build && node scripts/build-worker.js",
+    "build:main": "vite build && node scripts/build-worker.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
