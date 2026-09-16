@@ -16,7 +16,7 @@ export interface MCPServer {
   url: string;
   enabled: boolean;
   tools: MCPTool[];
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'connecting' | 'authenticating' | 'error';
   lastChecked?: number;
   // OAuth 2.1 fields
   oauthEnabled?: boolean;

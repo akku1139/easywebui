@@ -80,6 +80,12 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       return;
     }
 
+    // Mark as authenticating
+    onUpdateServers(servers.map(s => {
+      if (s.id !== serverId) return s;
+      return { ...s, status: 'authenticating' as const, lastChecked: Date.now() };
+    }));
+
     try {
       const response = await fetch('/api/mcp-oauth/initiate', {
         method: 'POST',
@@ -92,9 +98,19 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
       } else {
         console.error('Failed to initiate OAuth flow');
+        // Mark as error
+        onUpdateServers(servers.map(s => {
+          if (s.id !== serverId) return s;
+          return { ...s, status: 'error' as const, lastChecked: Date.now() };
+        }));
       }
     } catch (error) {
       console.error('OAuth initiation failed:', error);
+      // Mark as error
+      onUpdateServers(servers.map(s => {
+        if (s.id !== serverId) return s;
+        return { ...s, status: 'error' as const, lastChecked: Date.now() };
+      }));
     }
   };
 
@@ -110,34 +126,38 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     // If OAuth is enabled but not authenticated, start OAuth flow
     if (server.oauthEnabled && !server.oauthAccessToken) {
       await startOAuthFlow(id);
-      return; // Don't add mock tools until authenticated
+      return;
     }
 
+    // Mark as connecting
     onUpdateServers(servers.map(s => {
       if (s.id !== id) return s;
-      // Simulate MCP tool discovery
-      const mockTools: MCPTool[] = [
-        {
-          name: 'search',
-          description: 'Search the web for information',
-          inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-          serverId: id,
-        },
-        {
-          name: 'read_file',
-          description: 'Read a file from the filesystem',
-          inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-          serverId: id,
-        },
-      ];
-      return { ...s, status: 'connected' as const, tools: mockTools, lastChecked: Date.now() };
+      return { ...s, status: 'connecting' as const, lastChecked: Date.now() };
     }));
+
+    // Simulate connection delay
+    setTimeout(() => {
+      onUpdateServers(servers.map(s => {
+        if (s.id !== id) return s;
+        return { ...s, status: 'connected' as const, tools: [], lastChecked: Date.now() };
+      }));
+    }, 1000);
   };
 
   const statusColors = {
     connected: 'bg-green-500',
     disconnected: 'bg-gray-500',
+    connecting: 'bg-blue-500',
+    authenticating: 'bg-yellow-500',
     error: 'bg-red-500',
+  };
+
+  const statusLabels = {
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    connecting: 'Connecting...',
+    authenticating: 'Authenticating...',
+    error: 'Error',
   };
 
   return (
@@ -268,20 +288,56 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
                     </button>
                   </div>
                 </div>
-                {server.tools.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Available Tools:</p>
-                    {server.tools.map(tool => (
-                      <div key={tool.name} className="flex items-start gap-2 pl-2">
-                        <span className="text-purple-400 text-xs mt-0.5">⚡</span>
-                        <div>
-                          <span className={`text-xs font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{tool.name}</span>
-                          <span className={`text-xs ml-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{tool.description}</span>
+                {/* Status Display */}
+                <div className="mt-3">
+                  {server.status === 'connected' && server.tools.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Available Tools ({server.tools.length}):
+                      </p>
+                      {server.tools.map(tool => (
+                        <div key={tool.name} className="flex items-start gap-2 pl-2">
+                          <span className="text-purple-400 text-xs mt-0.5">⚡</span>
+                          <div>
+                            <span className={`text-xs font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{tool.name}</span>
+                            <span className={`text-xs ml-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{tool.description}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                  {server.status === 'connected' && server.tools.length === 0 && (
+                    <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                      Connected (no tools available)
+                    </p>
+                  )}
+                  {server.status === 'connecting' && (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                      <p className={`text-xs ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
+                        Connecting to server...
+                      </p>
+                    </div>
+                  )}
+                  {server.status === 'authenticating' && (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-500"></div>
+                      <p className={`text-xs ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                        Waiting for authentication...
+                      </p>
+                    </div>
+                  )}
+                  {server.status === 'disconnected' && (
+                    <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                      Click "Connect" to establish connection
+                    </p>
+                  )}
+                  {server.status === 'error' && (
+                    <p className={`text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                      Connection failed. Please check server URL and try again.
+                    </p>
+                  )}
+                </div>
               </div>
             ))
           )}
