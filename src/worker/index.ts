@@ -26,13 +26,17 @@ const app = new Hono<{ Bindings: Env }>();
 app.use('*', cors());
 
 // Basic Auth
-app.use('*', async (c, next) => {
-  const auth = basicAuth({
-    username: c.env.BASIC_AUTH_USER,
-    password: c.env.BASIC_AUTH_PASS,
-  });
-  return auth(c, next);
-});
+app.use(
+  '*',
+  basicAuth({
+    verifyUser: (username, password, c) => {
+      return (
+        username === c.env.BASIC_AUTH_USER &&
+        password === c.env.BASIC_AUTH_PASS
+      );
+    },
+  })
+);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
