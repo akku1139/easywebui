@@ -1,4 +1,5 @@
 import * as esbuild from 'esbuild';
+import { writeFileSync } from 'fs';
 
 async function build() {
   await esbuild.build({
@@ -17,6 +18,16 @@ async function build() {
   });
   
   console.log('✓ Worker built successfully');
+  
+  // Generate _routes.json for Cloudflare Pages
+  const routes = {
+    version: 1,
+    include: ['/api/*'],
+    exclude: []
+  };
+  
+  writeFileSync('dist/_routes.json', JSON.stringify(routes, null, 2));
+  console.log('✓ _routes.json generated');
 }
 
 build().catch((err) => {
