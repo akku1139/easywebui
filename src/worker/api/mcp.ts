@@ -75,6 +75,65 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
   const db = c.env.AI_CHAT_DB;
   const path = new URL(c.req.url).pathname;
   
+  if (path === '/api/mcp-oauth/register') {
+    const { serverId, registrationEndpoint } = await c.req.json();
+    
+    const server = await db.prepare(
+      'SELECT * FROM mcp_servers WHERE id = ?'
+    ).bind(serverId).first() as any;
+    
+    if (!server) {
+      return c.json({ error: 'Server not found' }, 404);
+    }
+    
+    const redirectUri = `${new URL(c.req.url).origin}/oauth-callback`;
+    
+    try {
+      const registrationResponse = await fetch(registrationEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_name: 'AI Chat MCP Client',
+          redirect_uris: [redirectUri],
+          grant_types: ['authorization_code'],
+          response_types: ['code'],
+          token_endpoint_auth_method: 'none',
+        }),
+      });
+      
+      if (!registrationResponse.ok) {
+        const errorText = await registrationResponse.text();
+        return c.json({ 
+          error: 'Client registration failed',
+          details: errorText 
+        }, 400);
+      }
+      
+      const registrationData = await registrationResponse.json() as {
+        client_id: string;
+        client_secret?: string;
+      };
+      
+      await db.prepare(
+        'UPDATE mcp_servers SET oauth_client_id = ?, oauth_client_secret = ? WHERE id = ?'
+      ).bind(
+        registrationData.client_id,
+        registrationData.client_secret || null,
+        serverId
+      ).run();
+      
+      return c.json({ 
+        success: true,
+        clientId: registrationData.client_id 
+      });
+    } catch (error) {
+      console.error('Client registration failed:', error);
+      return c.json({ error: 'Registration failed' }, 500);
+    }
+  }
+  
   if (path === '/api/mcp-oauth/initiate') {
     const body = await c.req.json();
     const { serverId, redirectUri } = body;

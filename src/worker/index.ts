@@ -7,6 +7,7 @@ import { handleConversations } from './api/conversations';
 import { handleMCPServers } from './api/mcp';
 import { handleMCPOAuth } from './api/mcp-oauth';
 import { handleEndpoints } from './api/endpoints';
+import { handleSettings } from './api/settings';
 
 export interface Env {
   // Database
@@ -73,6 +74,10 @@ app.get('/api/endpoints', handleEndpoints);
 app.post('/api/endpoints', handleEndpoints);
 app.patch('/api/endpoints', handleEndpoints);
 app.delete('/api/endpoints', handleEndpoints);
+
+// Settings
+app.get('/api/settings', handleSettings);
+app.post('/api/settings', handleSettings);
 
 // 404
 app.notFound((c) => c.json({ error: 'Not Found' }, 404));

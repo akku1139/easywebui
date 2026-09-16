@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MCPServer, MCPTool, Settings } from '../types';
+import * as apiClient from '../utils/api-client';
 
 interface Props {
   servers: MCPServer[];
@@ -51,6 +52,13 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       }
     } catch (error) {
       console.log('OAuth metadata not found, continuing without OAuth');
+    }
+    
+    // Save to D1 database
+    try {
+      await apiClient.addMCPServer(server);
+    } catch (error) {
+      console.error('Failed to save MCP server to database:', error);
     }
     
     onUpdateServers([...servers, server]);

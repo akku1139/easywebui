@@ -113,3 +113,16 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 
 CREATE INDEX IF NOT EXISTS idx_oauth_states_server ON oauth_states(server_id);
 CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
+
+-- User settings (synced across devices)
+CREATE TABLE IF NOT EXISTS settings (
+  id TEXT PRIMARY KEY,
+  endpoints_json TEXT NOT NULL DEFAULT '[]',
+  active_endpoint_id TEXT,
+  memory_enabled INTEGER NOT NULL DEFAULT 1,
+  auto_memory INTEGER NOT NULL DEFAULT 1,
+  theme TEXT NOT NULL DEFAULT 'system',
+  custom_system_prompt TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
