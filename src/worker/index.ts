@@ -30,12 +30,6 @@ app.use(
   '*',
   basicAuth({
     verifyUser: (username, password, c) => {
-      console.log('Auth Debug:', {
-        envUserLength: c.env.BASIC_AUTH_USER?.length,
-        envPassLength: c.env.BASIC_AUTH_PASS?.length,
-        usernameLength: username?.length,
-        passwordLength: password?.length,
-      });
       return (
         username === c.env.BASIC_AUTH_USER &&
         password === c.env.BASIC_AUTH_PASS
