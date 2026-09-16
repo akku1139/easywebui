@@ -12,8 +12,9 @@ export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
   const [newName, setNewName] = useState('');
   const [editingOAuth, setEditingOAuth] = useState<string | null>(null);
 
-  const addServer = () => {
+  const addServer = async () => {
     if (!newUrl.trim()) return;
+    
     const server: MCPServer = {
       id: Date.now().toString(36) + Math.random().toString(36).substr(2),
       name: newName.trim() || new URL(newUrl).hostname,
@@ -23,9 +24,36 @@ export default function MCPPanel({ servers, onUpdateServers, onClose }: Props) {
       status: 'disconnected',
       oauthEnabled: false,
     };
+    
+    // Auto-detect OAuth metadata
+    try {
+      const response = await fetch('/api/mcp-oauth/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverUrl: newUrl.trim() }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json() as {
+          authorizationEndpoint: string;
+          tokenEndpoint: string;
+        };
+        server.oauthEnabled = true;
+        server.oauthAuthEndpoint = data.authorizationEndpoint;
+        server.oauthTokenEndpoint = data.tokenEndpoint;
+      }
+    } catch (error) {
+      console.log('OAuth metadata not found, continuing without OAuth');
+    }
+    
     onUpdateServers([...servers, server]);
     setNewUrl('');
     setNewName('');
+    
+    // If OAuth was detected, open the OAuth configuration modal
+    if (server.oauthEnabled) {
+      setEditingOAuth(server.id);
+    }
   };
 
   const removeServer = (id: string) => {
@@ -214,34 +242,10 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
   const [oauthEnabled, setOauthEnabled] = useState(server.oauthEnabled || false);
   const [clientId, setClientId] = useState(server.oauthClientId || '');
   const [clientSecret, setClientSecret] = useState(server.oauthClientSecret || '');
-  const [authEndpoint, setAuthEndpoint] = useState(server.oauthAuthEndpoint || '');
-  const [tokenEndpoint, setTokenEndpoint] = useState(server.oauthTokenEndpoint || '');
+  const [authEndpoint] = useState(server.oauthAuthEndpoint || '');
+  const [tokenEndpoint] = useState(server.oauthTokenEndpoint || '');
   const [scopes, setScopes] = useState(server.oauthScopes || '');
-  const [discovering, setDiscovering] = useState(false);
-
-  const handleDiscover = async () => {
-    setDiscovering(true);
-    try {
-      const response = await fetch('/api/mcp-oauth/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl: server.url }),
-      });
-
-      if (response.ok) {
-        const data = await response.json() as {
-          authorizationEndpoint: string;
-          tokenEndpoint: string;
-        };
-        setAuthEndpoint(data.authorizationEndpoint);
-        setTokenEndpoint(data.tokenEndpoint);
-      }
-    } catch (error) {
-      console.error('OAuth discovery failed:', error);
-    } finally {
-      setDiscovering(false);
-    }
-  };
+  const [initiating, setInitiating] = useState(false);
 
   const handleSave = () => {
     onSave({
@@ -252,6 +256,40 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
       oauthTokenEndpoint: tokenEndpoint,
       oauthScopes: scopes,
     });
+  };
+
+  const handleStartOAuth = async () => {
+    if (!clientId) {
+      alert('Please enter a Client ID first');
+      return;
+    }
+
+    setInitiating(true);
+    try {
+      // Save the configuration first
+      handleSave();
+
+      // Start OAuth flow
+      const response = await fetch('/api/mcp-oauth/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId: server.id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { authorizationUrl: string };
+        // Open OAuth authorization URL in new window
+        window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
+        onClose();
+      } else {
+        alert('Failed to initiate OAuth flow');
+      }
+    } catch (error) {
+      console.error('OAuth initiation failed:', error);
+      alert('Failed to initiate OAuth flow');
+    } finally {
+      setInitiating(false);
+    }
   };
 
   return (
@@ -266,28 +304,25 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
           </p>
         </div>
         <div className="p-5 space-y-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={oauthEnabled}
-              onChange={e => setOauthEnabled(e.target.checked)}
-              className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500"
-            />
-            <span className="text-sm text-white">Enable OAuth 2.1</span>
-          </label>
-
           {oauthEnabled && (
             <>
-              <button
-                onClick={handleDiscover}
-                disabled={discovering}
-                className="w-full px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
-              >
-                {discovering ? 'Discovering...' : '🔍 Auto-discover OAuth endpoints'}
-              </button>
+              {/* Auto-detected endpoints (read-only) */}
+              {authEndpoint && tokenEndpoint && (
+                <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <p className="text-xs text-green-300 font-medium mb-2">✓ OAuth endpoints auto-detected</p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-400">
+                      <span className="font-medium">Auth:</span> {authEndpoint}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      <span className="font-medium">Token:</span> {tokenEndpoint}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Client ID</label>
+                <label className="block text-xs text-gray-400 mb-1">Client ID *</label>
                 <input
                   value={clientId}
                   onChange={e => setClientId(e.target.value)}
@@ -308,27 +343,7 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Authorization Endpoint</label>
-                <input
-                  value={authEndpoint}
-                  onChange={e => setAuthEndpoint(e.target.value)}
-                  placeholder="https://auth.example.com/authorize"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Token Endpoint</label>
-                <input
-                  value={tokenEndpoint}
-                  onChange={e => setTokenEndpoint(e.target.value)}
-                  placeholder="https://auth.example.com/token"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Scopes (space-separated)</label>
+                <label className="block text-xs text-gray-400 mb-1">Scopes (optional, space-separated)</label>
                 <input
                   value={scopes}
                   onChange={e => setScopes(e.target.value)}
@@ -346,6 +361,14 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
             </>
           )}
 
+          {!oauthEnabled && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-xs text-yellow-300">
+                OAuth was not detected for this server. You can manually configure OAuth endpoints if needed.
+              </p>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 pt-2">
             <button
               onClick={onClose}
@@ -353,9 +376,18 @@ function OAuthModal({ server, onSave, onClose }: OAuthModalProps) {
             >
               Cancel
             </button>
+            {oauthEnabled && clientId && (
+              <button
+                onClick={handleStartOAuth}
+                disabled={initiating}
+                className="px-6 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition disabled:opacity-50"
+              >
+                {initiating ? 'Starting...' : '🔐 Start OAuth Flow'}
+              </button>
+            )}
             <button
               onClick={handleSave}
-              className="px-6 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition"
+              className="px-6 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition"
             >
               Save
             </button>

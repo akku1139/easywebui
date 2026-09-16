@@ -9,6 +9,7 @@ import ChatView from './components/ChatView';
 import MemoryPanel from './components/MemoryPanel';
 import MCPPanel from './components/MCPPanel';
 import SettingsPanel from './components/SettingsPanel';
+import OAuthCallback from './components/OAuthCallback';
 
 type Panel = 'none' | 'memory' | 'mcp' | 'settings';
 
@@ -18,6 +19,14 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
+  
+  // Check if this is an OAuth callback
+  const searchParams = new URLSearchParams(window.location.search);
+  const isOAuthCallback = searchParams.has('code') && searchParams.has('state');
+  
+  if (isOAuthCallback) {
+    return <OAuthCallback />;
+  }
 
   useTheme(settings.theme);
 
