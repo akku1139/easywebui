@@ -35,7 +35,33 @@ export async function chatCompletion(
     }));
   }
 
-  const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
+  // Smart path construction to avoid double /v1/ and handle relative paths
+  let url: string;
+  
+  // Check if baseUrl is a relative path (starts with /)
+  if (config.baseUrl.startsWith('/')) {
+    // Relative path - use as-is to avoid mixed-content issues
+    if (config.baseUrl.endsWith('/v1')) {
+      url = `${config.baseUrl}/chat/completions`;
+    } else if (config.baseUrl.endsWith('/v1/')) {
+      url = `${config.baseUrl}chat/completions`;
+    } else {
+      const baseUrl = config.baseUrl.replace(/\/$/, '');
+      url = `${baseUrl}/v1/chat/completions`;
+    }
+  } else {
+    // Absolute URL (external API)
+    if (config.baseUrl.endsWith('/v1')) {
+      url = `${config.baseUrl}/chat/completions`;
+    } else if (config.baseUrl.endsWith('/v1/')) {
+      url = `${config.baseUrl}chat/completions`;
+    } else {
+      const baseUrl = config.baseUrl.replace(/\/$/, '');
+      url = `${baseUrl}/v1/chat/completions`;
+    }
+  }
+  
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
