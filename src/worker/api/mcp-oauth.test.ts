@@ -83,6 +83,24 @@ describe('MCP OAuth API', () => {
       
       expect(res.status).toBe(404);
     });
+
+    it('should handle network errors gracefully', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'));
+      global.fetch = mockFetch;
+
+      const req = new Request('http://localhost/api/mcp-oauth/discover', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ serverUrl: 'https://mcp.example.com' }),
+      });
+
+      const res = await app.fetch(req, env);
+      
+      expect(res.status).toBe(500);
+    });
   });
 
   describe('POST /api/mcp-oauth/initiate', () => {
@@ -266,7 +284,6 @@ describe('MCP OAuth API', () => {
 
       const res = await app.fetch(req, env);
       
-      // Expired state returns 404 because it's not found in the valid states
       expect(res.status).toBe(404);
     });
 
