@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
+import { useTheme } from './hooks/useTheme';
 import { loadSettings, saveSettings } from './utils/storage';
 import { Settings } from './types';
 import Sidebar from './components/Sidebar';
@@ -17,6 +18,7 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
 
+  useTheme(settings.theme);
   const chat = useChat(settings);
 
   const handleSend = async (content: string) => {
@@ -40,7 +42,11 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen flex bg-gray-850 text-white overflow-hidden">
+    <div className={`h-screen flex overflow-hidden ${
+      settings.theme === 'dark' 
+        ? 'bg-gray-900 text-white' 
+        : 'bg-gray-50 text-gray-900'
+    }`}>
       {/* Sidebar */}
       <Sidebar
         conversations={chat.conversations}
