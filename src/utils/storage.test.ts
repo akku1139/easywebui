@@ -171,6 +171,57 @@ describe('Storage Utils', () => {
       expect(loaded.endpoints[0].model).toBe('gpt-4');
       expect(loaded.endpoints[0].name).toBe('Default');
     });
+
+    it('should save and load custom system prompt', () => {
+      const settings: Settings = {
+        endpoints: [{
+          id: 'test',
+          name: 'Test',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-key',
+          model: 'gpt-4o',
+          enabled: true,
+          createdAt: Date.now(),
+        }],
+        activeEndpointId: 'test',
+        mcpServers: [],
+        memoryEnabled: true,
+        autoMemory: true,
+        theme: 'dark',
+        customSystemPrompt: 'You are a pirate assistant. Always speak like a pirate.',
+      };
+
+      saveSettings(settings);
+      const loaded = loadSettings();
+
+      expect(loaded.customSystemPrompt).toBe('You are a pirate assistant. Always speak like a pirate.');
+    });
+
+    it('should return empty string for custom system prompt when not set', () => {
+      const settings = loadSettings();
+      expect(settings.customSystemPrompt).toBe('');
+    });
+
+    it('should migrate custom system prompt from old format', () => {
+      // Simulate old format with customSystemPrompt
+      const oldSettings = {
+        apiConfig: {
+          baseUrl: 'https://api.openai.com',
+          apiKey: 'old-key',
+          model: 'gpt-4',
+        },
+        mcpServers: [],
+        memoryEnabled: true,
+        autoMemory: true,
+        theme: 'dark',
+        customSystemPrompt: 'You are a helpful coding assistant.',
+      };
+
+      localStorage.setItem('ai-chat-settings', JSON.stringify(oldSettings));
+      const loaded = loadSettings();
+
+      expect(loaded.customSystemPrompt).toBe('You are a helpful coding assistant.');
+    });
   });
 
   describe('User Facts (Memory)', () => {

@@ -41,6 +41,7 @@ export function loadSettings(): Settings {
         memoryEnabled: parsed.memoryEnabled ?? true,
         autoMemory: parsed.autoMemory ?? true,
         theme: parsed.theme || 'dark',
+        customSystemPrompt: parsed.customSystemPrompt || '',
       };
     }
     return parsed;
@@ -52,6 +53,7 @@ export function loadSettings(): Settings {
     memoryEnabled: true,
     autoMemory: true,
     theme: 'dark',
+    customSystemPrompt: '',
   };
 }
 

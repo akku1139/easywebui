@@ -60,7 +60,12 @@ export function useChat(settings: Settings) {
   const buildSystemPrompt = useCallback((): string => {
     const parts: string[] = [];
     
-    parts.push('You are a helpful AI assistant.');
+    // Custom system prompt (if provided, use it instead of default)
+    if (settings.customSystemPrompt && settings.customSystemPrompt.trim()) {
+      parts.push(settings.customSystemPrompt.trim());
+    } else {
+      parts.push('You are a helpful AI assistant.');
+    }
 
     // Layer 2: User Memory (permanent facts)
     // IMPORTANT: Sort by id for stable prefix cache
@@ -137,7 +142,10 @@ export function useChat(settings: Settings) {
       title: conv.messages.length === 0 ? content.slice(0, 50) : conv.title,
     };
 
-    const updatedConvs = conversations.map(c => c.id === conv!.id ? updatedConv : c);
+    // If conversation is new (not in conversations array yet), add it; otherwise update existing
+    const updatedConvs = conversations.some(c => c.id === conv!.id)
+      ? conversations.map(c => c.id === conv!.id ? updatedConv : c)
+      : [updatedConv, ...conversations];
     setConversations(updatedConvs);
     saveConversations(updatedConvs);
 
@@ -179,7 +187,6 @@ export function useChat(settings: Settings) {
       const finalConvs = updatedConvs.map(c => c.id === conv!.id ? finalConv : c);
       setConversations(finalConvs);
       saveConversations(finalConvs);
-      setStreamContent('');
 
       // Auto-extract memory after conversation
       if (settings.autoMemory && settings.memoryEnabled) {

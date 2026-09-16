@@ -129,4 +129,5 @@ export interface Settings {
   memoryEnabled: boolean;
   autoMemory: boolean;
   theme: 'light' | 'dark';
+  customSystemPrompt?: string;
 }

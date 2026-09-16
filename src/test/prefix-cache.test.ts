@@ -392,4 +392,120 @@ describe('Prefix Cache Stability', () => {
       expect(prompt2).toBe(prompt3);
     });
   });
+
+  describe('Custom System Prompt', () => {
+    // Extended buildSystemPrompt to support custom prompt
+    function buildSystemPromptWithCustom(
+      memoryEnabled: boolean,
+      userFacts: UserFact[],
+      summaries: ConversationSummary[],
+      mcpServers: MCPServer[],
+      customPrompt?: string
+    ): string {
+      const parts: string[] = [];
+      
+      // Custom system prompt (if provided, use it instead of default)
+      if (customPrompt && customPrompt.trim()) {
+        parts.push(customPrompt.trim());
+      } else {
+        parts.push('You are a helpful AI assistant.');
+      }
+
+      // Layer 2: User Memory - MUST be sorted for prefix cache stability
+      if (memoryEnabled && userFacts.length > 0) {
+        parts.push('\n## User Memory (facts you know about this user):');
+        const sortedFacts = [...userFacts].sort((a, b) => a.id.localeCompare(b.id));
+        sortedFacts.forEach(fact => {
+          parts.push(`- ${fact.content}`);
+        });
+      }
+
+      // Layer 3: Summaries - MUST be sorted for prefix cache stability
+      if (memoryEnabled && summaries.length > 0) {
+        parts.push('\n## Recent Conversations:');
+        const sortedSummaries = [...summaries]
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 10);
+        sortedSummaries.forEach(s => {
+          parts.push(`- ${s.date}: "${s.title}" - ${s.summary}`);
+        });
+      }
+
+      // MCP Tools - MUST be sorted for prefix cache stability
+      const enabledTools = mcpServers
+        .filter(s => s.enabled)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .flatMap(s => s.tools)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (enabledTools.length > 0) {
+        parts.push('\n## Available Tools (via MCP):');
+        enabledTools.forEach(tool => {
+          parts.push(`- ${tool.name}: ${tool.description}`);
+        });
+      }
+
+      return parts.join('\n');
+    }
+
+    it('should use custom system prompt when provided', () => {
+      const customPrompt = 'You are a pirate assistant. Always speak like a pirate.';
+      const prompt = buildSystemPromptWithCustom(true, [], [], [], customPrompt);
+      
+      expect(prompt).toContain('pirate assistant');
+      expect(prompt).not.toContain('You are a helpful AI assistant.');
+    });
+
+    it('should use default system prompt when custom prompt is empty', () => {
+      const prompt = buildSystemPromptWithCustom(true, [], [], [], '');
+      expect(prompt).toContain('You are a helpful AI assistant.');
+    });
+
+    it('should use default system prompt when custom prompt is not provided', () => {
+      const prompt = buildSystemPromptWithCustom(true, [], [], []);
+      expect(prompt).toContain('You are a helpful AI assistant.');
+    });
+
+    it('should maintain prefix cache stability with custom prompt', () => {
+      const customPrompt = 'You are a helpful coding assistant specialized in TypeScript.';
+      
+      // Multiple calls with same custom prompt should produce identical output
+      const prompt1 = buildSystemPromptWithCustom(true, [], [], [], customPrompt);
+      const prompt2 = buildSystemPromptWithCustom(true, [], [], [], customPrompt);
+      const prompt3 = buildSystemPromptWithCustom(true, [], [], [], customPrompt);
+      
+      expect(prompt1).toBe(prompt2);
+      expect(prompt2).toBe(prompt3);
+    });
+
+    it('should invalidate cache when custom prompt changes', () => {
+      const customPrompt1 = 'You are a helpful assistant.';
+      const customPrompt2 = 'You are a pirate assistant.';
+      
+      const prompt1 = buildSystemPromptWithCustom(true, [], [], [], customPrompt1);
+      const prompt2 = buildSystemPromptWithCustom(true, [], [], [], customPrompt2);
+      
+      expect(prompt1).not.toBe(prompt2);
+    });
+
+    it('should append memory and tools to custom prompt', () => {
+      const customPrompt = 'You are a specialized assistant.';
+      const facts: UserFact[] = [
+        { id: 'f1', content: 'User likes TypeScript', category: 'preference', createdAt: 1, updatedAt: 1, source: 'explicit' },
+      ];
+      
+      const prompt = buildSystemPromptWithCustom(true, facts, [], [], customPrompt);
+      
+      // Should contain custom prompt
+      expect(prompt).toContain('You are a specialized assistant.');
+      // Should also contain memory
+      expect(prompt).toContain('User likes TypeScript');
+    });
+
+    it('should trim whitespace from custom prompt', () => {
+      const customPrompt = '  You are a helpful assistant.  \n\n';
+      const prompt = buildSystemPromptWithCustom(true, [], [], [], customPrompt);
+      
+      expect(prompt.startsWith('You are a helpful assistant.')).toBe(true);
+    });
+  });
 });

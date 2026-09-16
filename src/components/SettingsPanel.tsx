@@ -192,6 +192,28 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
               </div>
             </label>
           </div>
+
+          {/* Custom System Prompt */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-white flex items-center gap-2">
+              <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Custom System Prompt
+            </h3>
+            <div>
+              <textarea
+                value={local.customSystemPrompt || ''}
+                onChange={e => setLocal({ ...local, customSystemPrompt: e.target.value })}
+                placeholder="You are a helpful AI assistant. (Leave empty to use default)"
+                rows={6}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Customize the AI's behavior. This replaces the default system prompt. Memory and tools are still appended.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
