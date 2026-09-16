@@ -1,0 +1,22 @@
+# Local development wrangler.toml
+# For production, use wrangler.toml.template with GitHub Actions
+
+name = "ai-chat"
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "dist"
+
+# D1 Database binding (replace with your local D1 database ID)
+[[d1_databases]]
+binding = "AI_CHAT_DB"
+database_name = "ai-chat-db"
+database_id = "YOUR_LOCAL_D1_DATABASE_ID"
+
+# Development settings
+[dev]
+port = 8788
+
+# Note: Set these as environment variables for local development
+# export BASIC_AUTH_USER=admin
+# export BASIC_AUTH_PASS=admin123
+# export OPENAI_API_KEY=sk-...
+# export OPENAI_BASE_URL=https://api.openai.com
