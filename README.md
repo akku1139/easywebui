@@ -130,7 +130,7 @@ sed -e "s|{{D1_DATABASE_ID}}|YOUR_D1_ID|g" \
     wrangler.toml.template > wrangler.toml
 
 # Pages プロジェクト作成
-npx wrangler pages project create ai-chat --production-branch main
+npx wrangler pages project create ai-chat --production-branch ai-chat-web-ui-development-7ac5e
 
 # シークレット設定
 npx wrangler pages secret put BASIC_AUTH_USER --project-name ai-chat
@@ -229,7 +229,7 @@ PR作成時・プッシュ時に自動実行：
 
 ### Deploy (`.github/workflows/deploy.yml`)
 
-`main`ブランチへのマージ時に自動実行：
+`ai-chat-web-ui-development-7ac5e`ブランチへのマージ時に自動実行：
 
 1. **テスト & ビルド** - CIと同じチェック
 2. **Cloudflare Pages デプロイ** - フロントエンド
@@ -247,7 +247,7 @@ PR作成時・プッシュ時に自動実行：
 ```
 PR作成 → CI実行（テスト+型チェック+ビルド）
     ↓
-mainにマージ → Deploy実行
+ai-chat-web-ui-development-7ac5eにマージ → Deploy実行
     ↓
 Cloudflare Pages + Workers に自動デプロイ
 ```

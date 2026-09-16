@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ai-chat-web-ui-development-7ac5e]
   pull_request:
-    branches: [main]
+    branches: [ai-chat-web-ui-development-7ac5e]
 
 jobs:
   test-and-typecheck:
