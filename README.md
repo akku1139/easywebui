@@ -43,7 +43,7 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              Cloudflare Pages + Functions                │
+│              Cloudflare Pages + Hono Worker              │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │         Frontend (React + Vite)                  │   │
@@ -53,7 +53,7 @@ Cloudflare Pages/Workers + D1 を使ったAIチャットWebUI。ChatGPTライク
 │  └──────────────────────────────────────────────────┘   │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │      Backend (Pages Functions + Drizzle ORM)     │   │
+│  │      Backend (Hono Worker + Drizzle ORM)         │   │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐       │   │
 │  │  │Basic Auth│  │ Memory   │  │MCP Proxy │       │   │
 │  │  │          │  │ Injection│  │ + OAuth  │       │   │
@@ -217,17 +217,30 @@ npx vitest run src/test/prefix-cache.test.ts
 
 詳細は [TESTING.md](./TESTING.md#-重要-テスト方針) を参照。
 
-## CI/CD
+## バックエンド (Hono)
 
-GitHub Actionsにより、以下のワークフローが自動実行されます。
+バックエンドはHonoフレームワークで実装されており、esbuildでバンドルされて`dist/_worker.js`として出力されます。
 
-### CI (`.github/workflows/ci.yml`)
+### 構造
 
-PR作成時・プッシュ時に自動実行：
+```
+src/worker/
+├── index.ts           # メインアプリ（ルーティング、ミドルウェア）
+└── api/
+    ├── chat.ts        # チャット完了API（メモリ注入付き）
+    ├── memory.ts      # メモリAPI
+    ├── conversations.ts # 会話管理API
+    ├── mcp.ts         # MCPサーバー・OAuth API
+    └── endpoints.ts   # APIエンドポイント管理
+```
 
-1. **TypeScript型チェック** - コンパイルエラー検出
-2. **テスト実行** - 全テストスイート
-3. **ビルド** - 本番用ビルド
+### ビルド
+
+```bash
+npm run build:worker
+```
+
+これにより、`dist/_worker.js`が生成され、Cloudflare Pagesにデプロイされます。
 
 ### Deploy (`.github/workflows/deploy.yml`)
 
