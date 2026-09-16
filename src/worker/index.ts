@@ -25,34 +25,13 @@ const app = new Hono<{ Bindings: Env }>();
 // CORS
 app.use('*', cors());
 
-// Basic Auth (skip for health check)
+// Basic Auth
 app.use('*', async (c, next) => {
-  const path = c.req.path;
-  
-  // Skip auth for health check
-  if (path === '/api/health') {
-    await next();
-    return;
-  }
-  
-  const authHeader = c.req.header('Authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return c.text('Unauthorized', 401, {
-      'WWW-Authenticate': 'Basic realm="AI Chat"',
-    });
-  }
-  
-  const decoded = atob(authHeader.slice(6));
-  const [user, pass] = decoded.split(':');
-  
-  if (user !== c.env.BASIC_AUTH_USER || pass !== c.env.BASIC_AUTH_PASS) {
-    return c.text('Unauthorized', 401, {
-      'WWW-Authenticate': 'Basic realm="AI Chat"',
-    });
-  }
-  
-  await next();
+  const auth = basicAuth({
+    username: c.env.BASIC_AUTH_USER,
+    password: c.env.BASIC_AUTH_PASS,
+  });
+  return auth(c, next);
 });
 
 // Health check
@@ -93,6 +72,12 @@ app.notFound((c) => c.json({ error: 'Not Found' }, 404));
 
 // Error handler
 app.onError((err, c) => {
+  // Handle HTTPException from basicAuth middleware
+  if (err instanceof Error && 'status' in err && err.status === 401) {
+    return c.text('Unauthorized', 401, {
+      'WWW-Authenticate': 'Basic realm="AI Chat"',
+    });
+  }
   console.error('Unhandled error:', err);
   return c.json({ error: err.message }, 500);
 });

@@ -10,8 +10,12 @@ describe('Hono Worker - Main App', () => {
   });
 
   describe('Health Check', () => {
-    it('should return health status', async () => {
-      const req = new Request('http://localhost/api/health');
+    it('should return health status with authentication', async () => {
+      const req = new Request('http://localhost/api/health', {
+        headers: {
+          'Authorization': 'Basic ' + btoa('testuser:testpass'),
+        },
+      });
       const res = await app.fetch(req, env);
       
       expect(res.status).toBe(200);
