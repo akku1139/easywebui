@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { AuthState } from '../types';
 
 const AUTH_KEY = 'ai-chat-auth';
@@ -16,46 +16,41 @@ export function useAuth() {
     return { isAuthenticated: false, username: '', token: '' };
   });
 
-  // Check authentication status on mount and periodically
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/check', {
-          method: 'GET',
-          credentials: 'include',
-        });
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    try {
+      // Create Basic Auth token
+      const token = btoa(`${username}:${password}`);
+      
+      // Verify credentials with backend
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${token}`,
+        },
+      });
 
-        if (response.ok) {
-          const data = await response.json() as { username: string; token: string };
-          const newAuth = {
-            isAuthenticated: true,
-            username: data.username,
-            token: data.token,
-          };
-          setAuth(newAuth);
-          localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
-        } else if (response.status === 401) {
-          // Not authenticated
-          setAuth({ isAuthenticated: false, username: '', token: '' });
-          localStorage.removeItem(AUTH_KEY);
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
+      if (response.ok) {
+        const newAuth = {
+          isAuthenticated: true,
+          username,
+          token,
+        };
+        setAuth(newAuth);
+        localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
+        return true;
       }
-    };
-
-    checkAuth();
-    // Check every 5 minutes
-    const interval = setInterval(checkAuth, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+      return false;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
+    }
   }, []);
 
   const logout = useCallback(() => {
     setAuth({ isAuthenticated: false, username: '', token: '' });
     localStorage.removeItem(AUTH_KEY);
-    // Force browser to show Basic Auth dialog again
-    window.location.href = '/';
   }, []);
 
-  return { auth, logout };
+  return { auth, login, logout };
 }

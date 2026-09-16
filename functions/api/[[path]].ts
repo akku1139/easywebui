@@ -76,15 +76,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleEndpoints(request, env);
     }
 
-    // Auth check endpoint (for Basic Auth)
-    if (pathname === '/api/auth/check') {
+    // Auth verify endpoint (for UI login)
+    if (pathname === '/api/auth/verify') {
       // Basic Auth is already validated above
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader && authHeader.startsWith('Basic ')) {
-        const token = authHeader.slice(6);
-        return jsonResponse({ username: env.BASIC_AUTH_USER, token });
-      }
-      return jsonResponse({ error: 'Not authenticated' }, 401);
+      return jsonResponse({ success: true, username: env.BASIC_AUTH_USER });
     }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });
