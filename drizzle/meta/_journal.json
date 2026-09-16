@@ -1,15 +1,13 @@
 {
-  "version": "1",
+  "version": "7",
   "dialect": "sqlite",
-  "ip": false,
-  "tables": {},
-  "enums": {},
-  "_meta": {
-    "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "indexes": {}
-  }
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1704067200000,
+      "tag": "v0.0.0",
+      "breakpoints": true
+    }
+  ]
 }

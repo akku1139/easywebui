@@ -120,8 +120,8 @@ npm run test:run
 # D1データベース作成
 npx wrangler d1 create ai-chat-db
 
-# スキーマ適用
-npx wrangler d1 execute ai-chat-db --file=cloudflare/schema.sql
+# Drizzleマイグレーション実行
+npm run db:migrate:prod
 
 # wrangler.toml.template から wrangler.toml を生成
 # {{D1_DATABASE_ID}} と {{OPENAI_BASE_URL}} を実際の値に置き換え
