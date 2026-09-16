@@ -76,6 +76,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleEndpoints(request, env);
     }
 
+    // Auth verification endpoint
+    if (pathname === '/api/auth/verify') {
+      return jsonResponse({ success: true, username: env.BASIC_AUTH_USER });
+    }
+
     return new Response('Not Found', { status: 404, headers: corsHeaders });
   } catch (error) {
     return jsonResponse({ error: String(error) }, 500);

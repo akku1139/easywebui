@@ -2,8 +2,6 @@ import { useState, useCallback } from 'react';
 import { AuthState } from '../types';
 
 const AUTH_KEY = 'ai-chat-auth';
-const DEFAULT_USERNAME = 'admin';
-const DEFAULT_PASSWORD = 'admin123'; // In production, this is handled by Cloudflare Workers Basic Auth
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthState>(() => {
@@ -18,16 +16,29 @@ export function useAuth() {
     return { isAuthenticated: false, username: '', token: '' };
   });
 
-  const login = useCallback((username: string, password: string): boolean => {
-    // Simple client-side auth (in production, Cloudflare Workers handles Basic Auth)
-    if (username === DEFAULT_USERNAME && password === DEFAULT_PASSWORD) {
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    try {
+      // Verify credentials with backend API
       const token = btoa(`${username}:${password}`);
-      const newAuth = { isAuthenticated: true, username, token };
-      setAuth(newAuth);
-      localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
-      return true;
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const newAuth = { isAuthenticated: true, username, token };
+        setAuth(newAuth);
+        localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login failed:', error);
+      return false;
     }
-    return false;
   }, []);
 
   const logout = useCallback(() => {

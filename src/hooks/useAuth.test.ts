@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAuth } from './useAuth';
 
 describe('useAuth', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it('should start unauthenticated', () => {
@@ -13,11 +14,17 @@ describe('useAuth', () => {
     expect(result.current.auth.username).toBe('');
   });
 
-  it('should login with correct credentials', () => {
+  it('should login with correct credentials', async () => {
+    // Mock successful API response
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ success: true, username: 'admin' }),
+    } as Response);
+
     const { result } = renderHook(() => useAuth());
 
-    act(() => {
-      const success = result.current.login('admin', 'admin123');
+    await act(async () => {
+      const success = await result.current.login('admin', 'admin123');
       expect(success).toBe(true);
     });
 
@@ -26,22 +33,34 @@ describe('useAuth', () => {
     expect(result.current.auth.token).toBeTruthy();
   });
 
-  it('should reject incorrect credentials', () => {
+  it('should reject incorrect credentials', async () => {
+    // Mock failed API response
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+    } as Response);
+
     const { result } = renderHook(() => useAuth());
 
-    act(() => {
-      const success = result.current.login('admin', 'wrong');
+    await act(async () => {
+      const success = await result.current.login('admin', 'wrong');
       expect(success).toBe(false);
     });
 
     expect(result.current.auth.isAuthenticated).toBe(false);
   });
 
-  it('should logout', () => {
+  it('should logout', async () => {
+    // Mock successful API response
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ success: true, username: 'admin' }),
+    } as Response);
+
     const { result } = renderHook(() => useAuth());
 
-    act(() => {
-      result.current.login('admin', 'admin123');
+    await act(async () => {
+      await result.current.login('admin', 'admin123');
     });
 
     expect(result.current.auth.isAuthenticated).toBe(true);
@@ -54,11 +73,17 @@ describe('useAuth', () => {
     expect(result.current.auth.username).toBe('');
   });
 
-  it('should persist auth state in localStorage', () => {
+  it('should persist auth state in localStorage', async () => {
+    // Mock successful API response
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ success: true, username: 'admin' }),
+    } as Response);
+
     const { result } = renderHook(() => useAuth());
 
-    act(() => {
-      result.current.login('admin', 'admin123');
+    await act(async () => {
+      await result.current.login('admin', 'admin123');
     });
 
     // Check localStorage

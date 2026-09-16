@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface Props {
-  onLogin: (username: string, password: string) => boolean;
+  onLogin: (username: string, password: string) => Promise<boolean>;
 }
 
 export default function AuthScreen({ onLogin }: Props) {
@@ -10,18 +10,21 @@ export default function AuthScreen({ onLogin }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     
-    setTimeout(() => {
-      const success = onLogin(username, password);
+    try {
+      const success = await onLogin(username, password);
       if (!success) {
         setError('Invalid credentials');
       }
+    } catch (err) {
+      setError('Login failed. Please try again.');
+    } finally {
       setLoading(false);
-    }, 300);
+    }
   };
 
   return (
@@ -76,10 +79,6 @@ export default function AuthScreen({ onLogin }: Props) {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <p className="text-center text-gray-500 text-xs mt-6">
-            Default: admin / admin123
-          </p>
         </div>
       </div>
     </div>

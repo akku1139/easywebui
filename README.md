@@ -162,11 +162,6 @@ GitHub リポジトリの Settings > Secrets and variables > Actions で以下�
 https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai
 ```
 
-## デフォルト認証情報（フロントエンドデモ用）
-
-- ユーザー名: `admin`
-- パスワード: `admin123`
-
 ## メモリの仕組み
 
 ChatGPTのメモリ機能をリバースエンジニアリングして実装：
