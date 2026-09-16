@@ -121,6 +121,13 @@ export interface APIConfig {
   model: string;
 }
 
+// OAuth Client Configuration
+export interface OAuthClientConfig {
+  clientId: string;
+  clientSecret?: string;
+  redirectUri?: string;
+}
+
 // Settings
 export interface Settings {
   endpoints: APIEndpoint[];
@@ -130,4 +137,5 @@ export interface Settings {
   autoMemory: boolean;
   theme: 'light' | 'dark' | 'system';
   customSystemPrompt?: string;
+  oauthClients?: Record<string, OAuthClientConfig>; // serverId -> OAuth config
 }

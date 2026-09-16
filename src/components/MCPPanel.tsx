@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { MCPServer, MCPTool } from '../types';
+import { MCPServer, MCPTool, Settings } from '../types';
 
 interface Props {
   servers: MCPServer[];
   onUpdateServers: (servers: MCPServer[]) => void;
   onClose: () => void;
   theme: 'light' | 'dark';
+  settings: Settings;
+  onUpdateSettings: (settings: Settings) => void;
 }
 
-export default function MCPPanel({ servers, onUpdateServers, onClose, theme }: Props) {
+export default function MCPPanel({ servers, onUpdateServers, onClose, theme, settings, onUpdateSettings }: Props) {
   const isDark = theme === 'dark';
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
@@ -66,7 +68,46 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme }: P
     onUpdateServers(servers.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  const mockConnect = (id: string) => {
+  const startOAuthFlow = async (serverId: string) => {
+    const server = servers.find(s => s.id === serverId);
+    if (!server || !server.oauthEnabled) return;
+
+    // Check if we have OAuth client config for this server
+    const oauthConfig = settings.oauthClients?.[serverId];
+    if (!oauthConfig?.clientId) {
+      // Open OAuth modal to configure client ID
+      setEditingOAuth(serverId);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/mcp-oauth/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverId }),
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { authorizationUrl: string };
+        window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
+      } else {
+        console.error('Failed to initiate OAuth flow');
+      }
+    } catch (error) {
+      console.error('OAuth initiation failed:', error);
+    }
+  };
+
+  const mockConnect = async (id: string) => {
+    const server = servers.find(s => s.id === id);
+    if (!server) return;
+
+    // If OAuth is enabled but not authenticated, start OAuth flow
+    if (server.oauthEnabled && !server.oauthAccessToken) {
+      await startOAuthFlow(id);
+      return; // Don't add mock tools until authenticated
+    }
+
     onUpdateServers(servers.map(s => {
       if (s.id !== id) return s;
       // Simulate MCP tool discovery
