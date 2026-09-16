@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
 import { useTheme, Theme } from './hooks/useTheme';
@@ -14,19 +15,23 @@ import OAuthCallback from './components/OAuthCallback';
 type Panel = 'none' | 'memory' | 'mcp' | 'settings';
 
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/oauth-callback" element={<OAuthCallback />} />
+      <Route path="/c/:id" element={<ChatApp />} />
+      <Route path="/" element={<ChatApp />} />
+    </Routes>
+  );
+}
+
+function ChatApp() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { auth } = useAuth();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
-  
-  // Check if this is an OAuth callback
-  const searchParams = new URLSearchParams(window.location.search);
-  const isOAuthCallback = searchParams.has('code') && searchParams.has('state');
-  
-  if (isOAuthCallback) {
-    return <OAuthCallback />;
-  }
 
   useTheme(settings.theme);
 
@@ -48,6 +53,25 @@ export default function App() {
   }, [settings.theme]);
 
   const chat = useChat(settings);
+
+  // Sync URL with active conversation
+  useEffect(() => {
+    if (chat.activeConversationId && chat.activeConversationId !== id) {
+      navigate(`/c/${chat.activeConversationId}`, { replace: true });
+    } else if (!chat.activeConversationId && id) {
+      navigate('/', { replace: true });
+    }
+  }, [chat.activeConversationId, id, navigate]);
+
+  // Load conversation from URL
+  useEffect(() => {
+    if (id && id !== chat.activeConversationId) {
+      const conversation = chat.conversations.find(c => c.id === id);
+      if (conversation) {
+        chat.setActiveConversationId(id);
+      }
+    }
+  }, [id]);
 
   const handleSend = async (content: string) => {
     setChatError('');

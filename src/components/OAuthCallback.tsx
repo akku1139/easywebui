@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 export default function OAuthCallback() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     const handleCallback = async () => {
-      const searchParams = new URLSearchParams(window.location.search);
       const code = searchParams.get('code');
       const state = searchParams.get('state');
       const error = searchParams.get('error');
@@ -33,11 +35,11 @@ export default function OAuthCallback() {
 
         if (response.ok) {
           setStatus('success');
-          setMessage('OAuth authentication successful! You can close this window.');
+          setMessage('OAuth authentication successful! Redirecting...');
           
-          // Close the window after 2 seconds
+          // Redirect to home after 2 seconds
           setTimeout(() => {
-            window.close();
+            navigate('/');
           }, 2000);
         } else {
           const data = await response.json() as { error?: string };
@@ -52,7 +54,7 @@ export default function OAuthCallback() {
     };
 
     handleCallback();
-  }, []);
+  }, [searchParams, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -80,10 +82,10 @@ export default function OAuthCallback() {
               <h2 className="text-xl font-semibold text-white mb-2">Error</h2>
               <p className="text-gray-400 mb-4">{message}</p>
               <button
-                onClick={() => window.close()}
+                onClick={() => navigate('/')}
                 className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition"
               >
-                Close Window
+                Return to App
               </button>
             </>
           )}
