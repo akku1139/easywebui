@@ -280,4 +280,6 @@ npm run typecheck && npm run test:run && npm run build
 
 ## ライセンス
 
-MIT
+AGPL-3.0-or-later
+
+詳細は [LICENSE](./LICENSE) ファイルを参照してください。

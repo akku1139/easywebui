@@ -2,6 +2,7 @@
   "name": "sandbox-workspace",
   "private": true,
   "type": "module",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && npm run test:run && vite build && npm run build:worker",

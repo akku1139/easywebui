@@ -78,7 +78,7 @@ describe('Prefix Cache Stability', () => {
     endpoints: [{
       id: 'test',
       name: 'Test',
-      baseUrl: 'https://api.openai.com',
+      baseUrl: 'https://api.openai.com/v1',
       apiKey: 'test',
       model: 'gpt-4o',
       enabled: true,

@@ -4,7 +4,7 @@ import { Message, APIConfig } from '../types';
 
 describe('API Utils', () => {
   const mockConfig: APIConfig = {
-    baseUrl: 'https://api.openai.com',
+    baseUrl: 'https://api.openai.com/v1',
     apiKey: 'test-key',
     model: 'gpt-4o',
   };

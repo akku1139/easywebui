@@ -8,7 +8,7 @@ describe('useChat', () => {
     endpoints: [{
       id: 'test-endpoint',
       name: 'Test',
-      baseUrl: 'https://api.openai.com',
+      baseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
       model: 'gpt-4o',
       enabled: true,
@@ -136,7 +136,7 @@ describe('useChat', () => {
         {
           id: 'endpoint-1',
           name: 'OpenAI',
-          baseUrl: 'https://api.openai.com',
+          baseUrl: 'https://api.openai.com/v1',
           apiKey: 'key-1',
           model: 'gpt-4o',
           enabled: true,
@@ -146,7 +146,7 @@ describe('useChat', () => {
         {
           id: 'endpoint-2',
           name: 'Claude',
-          baseUrl: 'https://api.anthropic.com',
+          baseUrl: 'https://api.anthropic.com/v1',
           apiKey: 'key-2',
           model: 'claude-3-opus',
           enabled: true,
