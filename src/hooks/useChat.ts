@@ -157,8 +157,7 @@ export function useChat(settings: Settings) {
       const result = await chatCompletion(
         { baseUrl: activeEndpoint.baseUrl, apiKey: activeEndpoint.apiKey, model: activeEndpoint.model },
         allMessages,
-        tools.length > 0 ? tools : undefined,
-        (chunk) => setStreamContent(prev => prev + chunk)
+        tools.length > 0 ? tools : undefined
       );
 
       const assistantMessage: Message = {
@@ -177,7 +176,7 @@ export function useChat(settings: Settings) {
         updatedAt: Date.now(),
       };
 
-      const finalConvs = conversations.map(c => c.id === conv!.id ? finalConv : c);
+      const finalConvs = updatedConvs.map(c => c.id === conv!.id ? finalConv : c);
       setConversations(finalConvs);
       saveConversations(finalConvs);
       setStreamContent('');

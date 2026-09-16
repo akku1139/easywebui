@@ -275,13 +275,36 @@ describe('useChat', () => {
     it('should create conversation automatically when sending first message', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
 
-      // Mock API response
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{ message: { content: 'Hi there!' } }]
-        }),
-      } as Response);
+      // Mock non-streaming API response
+      vi.mocked(globalThis.fetch).mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        
+        // If stream is requested, return a streaming response
+        if (body.stream) {
+          const encoder = new TextEncoder();
+          const mockStream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hi there!"}}]}\n\n'));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            }
+          });
+          
+          return {
+            ok: true,
+            body: mockStream,
+            headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+          } as unknown as Response;
+        }
+        
+        // Non-streaming response
+        return {
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{ message: { content: 'Hi there!' } }]
+          }),
+        } as Response;
+      });
 
       await act(async () => {
         await result.current.sendMessage('Hello');
@@ -318,10 +341,14 @@ describe('useChat', () => {
     it('should handle multiple facts with stable ordering', () => {
       const { result } = renderHook(() => useChat(mockSettings));
 
-      // Add facts in random order
+      // Add facts in random order (each in separate act block)
       act(() => {
         result.current.addUserFact('Fact C', 'other');
+      });
+      act(() => {
         result.current.addUserFact('Fact A', 'other');
+      });
+      act(() => {
         result.current.addUserFact('Fact B', 'other');
       });
 
