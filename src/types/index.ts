@@ -24,6 +24,7 @@ export interface MCPServer {
   oauthClientSecret?: string;
   oauthTokenEndpoint?: string;
   oauthAuthEndpoint?: string;
+  oauthRegistrationEndpoint?: string;
   oauthAccessToken?: string;
   oauthRefreshToken?: string;
   oauthTokenExpiresAt?: number;

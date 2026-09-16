@@ -62,6 +62,7 @@ app.get('/api/mcp-servers', handleMCPServers);
 app.post('/api/mcp-servers', handleMCPServers);
 app.patch('/api/mcp-servers', handleMCPServers);
 app.delete('/api/mcp-servers', handleMCPServers);
+app.post('/api/mcp-oauth/register', handleMCPOAuth);
 app.post('/api/mcp-oauth/initiate', handleMCPOAuth);
 app.get('/api/mcp-oauth/callback', handleMCPOAuth);
 app.post('/api/mcp-oauth/callback', handleMCPOAuth);

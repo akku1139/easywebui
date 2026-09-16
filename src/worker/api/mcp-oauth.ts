@@ -18,12 +18,14 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
         const metadata = await response.json() as {
           authorization_endpoint?: string;
           token_endpoint?: string;
+          registration_endpoint?: string;
         };
         
         if (metadata.authorization_endpoint && metadata.token_endpoint) {
           return c.json({
             authorizationEndpoint: metadata.authorization_endpoint,
             tokenEndpoint: metadata.token_endpoint,
+            registrationEndpoint: metadata.registration_endpoint,
           });
         }
       }
@@ -36,12 +38,14 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
         const oidcMetadata = await oidcResponse.json() as {
           authorization_endpoint?: string;
           token_endpoint?: string;
+          registration_endpoint?: string;
         };
         
         if (oidcMetadata.authorization_endpoint && oidcMetadata.token_endpoint) {
           return c.json({
             authorizationEndpoint: oidcMetadata.authorization_endpoint,
             tokenEndpoint: oidcMetadata.token_endpoint,
+            registrationEndpoint: oidcMetadata.registration_endpoint,
           });
         }
       }
@@ -50,6 +54,69 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
     } catch (error) {
       console.error('OAuth discovery failed:', error);
       return c.json({ error: 'Discovery failed' }, 500);
+    }
+  }
+
+  // Dynamic Client Registration
+  if (path === '/api/mcp-oauth/register') {
+    const { serverId, registrationEndpoint } = await c.req.json();
+    
+    const server = await db.prepare(
+      'SELECT * FROM mcp_servers WHERE id = ?'
+    ).bind(serverId).first() as any;
+    
+    if (!server) {
+      return c.json({ error: 'Server not found' }, 404);
+    }
+    
+    const redirectUri = `${new URL(c.req.url).origin}/oauth-callback`;
+    
+    try {
+      // Register client with the authorization server
+      const registrationResponse = await fetch(registrationEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_name: 'AI Chat MCP Client',
+          redirect_uris: [redirectUri],
+          grant_types: ['authorization_code'],
+          response_types: ['code'],
+          token_endpoint_auth_method: 'none', // Public client
+        }),
+      });
+      
+      if (!registrationResponse.ok) {
+        const errorText = await registrationResponse.text();
+        return c.json({ 
+          error: 'Client registration failed',
+          details: errorText 
+        }, 400);
+      }
+      
+      const registrationData = await registrationResponse.json() as {
+        client_id: string;
+        client_secret?: string;
+        registration_access_token?: string;
+      };
+      
+      // Update server with client credentials
+      await db.prepare(
+        'UPDATE mcp_servers SET oauth_client_id = ?, oauth_client_secret = ? WHERE id = ?'
+      ).bind(
+        registrationData.client_id,
+        registrationData.client_secret || null,
+        serverId
+      ).run();
+      
+      return c.json({ 
+        success: true,
+        clientId: registrationData.client_id 
+      });
+    } catch (error) {
+      console.error('Client registration failed:', error);
+      return c.json({ error: 'Registration failed' }, 500);
     }
   }
 
@@ -63,6 +130,53 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
     
     if (!server || !server.oauth_enabled) {
       return c.json({ error: 'Server not found or OAuth not enabled' }, 404);
+    }
+    
+    // If no client_id, try to register dynamically
+    if (!server.oauth_client_id && server.oauth_registration_endpoint) {
+      const redirectUri = `${new URL(c.req.url).origin}/oauth-callback`;
+      
+      try {
+        const registrationResponse = await fetch(server.oauth_registration_endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            client_name: 'AI Chat MCP Client',
+            redirect_uris: [redirectUri],
+            grant_types: ['authorization_code'],
+            response_types: ['code'],
+            token_endpoint_auth_method: 'none',
+          }),
+        });
+        
+        if (registrationResponse.ok) {
+          const registrationData = await registrationResponse.json() as {
+            client_id: string;
+            client_secret?: string;
+          };
+          
+          // Update server with client credentials
+          await db.prepare(
+            'UPDATE mcp_servers SET oauth_client_id = ?, oauth_client_secret = ? WHERE id = ?'
+          ).bind(
+            registrationData.client_id,
+            registrationData.client_secret || null,
+            serverId
+          ).run();
+          
+          server.oauth_client_id = registrationData.client_id;
+          server.oauth_client_secret = registrationData.client_secret || null;
+        }
+      } catch (error) {
+        console.error('Dynamic client registration failed:', error);
+        return c.json({ error: 'Client registration required' }, 400);
+      }
+    }
+    
+    if (!server.oauth_client_id) {
+      return c.json({ error: 'Client ID required' }, 400);
     }
     
     // Generate PKCE parameters

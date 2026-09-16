@@ -14,7 +14,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
   const isDark = theme === 'dark';
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
-  const [editingOAuth, setEditingOAuth] = useState<string | null>(null);
 
   const addServer = async () => {
     if (!newUrl.trim()) return;
@@ -41,10 +40,14 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         const data = await response.json() as {
           authorizationEndpoint: string;
           tokenEndpoint: string;
+          registrationEndpoint?: string;
         };
         server.oauthEnabled = true;
         server.oauthAuthEndpoint = data.authorizationEndpoint;
         server.oauthTokenEndpoint = data.tokenEndpoint;
+        if (data.registrationEndpoint) {
+          server.oauthRegistrationEndpoint = data.registrationEndpoint;
+        }
       }
     } catch (error) {
       console.log('OAuth metadata not found, continuing without OAuth');
@@ -53,11 +56,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     onUpdateServers([...servers, server]);
     setNewUrl('');
     setNewName('');
-    
-    // If OAuth was detected, open the OAuth configuration modal
-    if (server.oauthEnabled) {
-      setEditingOAuth(server.id);
-    }
   };
 
   const removeServer = (id: string) => {
@@ -72,14 +70,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     const server = servers.find(s => s.id === serverId);
     if (!server || !server.oauthEnabled) return;
 
-    // Check if we have OAuth client config for this server
-    const oauthConfig = settings.oauthClients?.[serverId];
-    if (!oauthConfig?.clientId) {
-      // Open OAuth modal to configure client ID
-      setEditingOAuth(serverId);
-      return;
-    }
-
     // Mark as authenticating
     onUpdateServers(servers.map(s => {
       if (s.id !== serverId) return s;
@@ -87,6 +77,35 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     }));
 
     try {
+      // If no client_id, try dynamic registration first
+      if (!server.oauthClientId && server.oauthRegistrationEndpoint) {
+        const registerResponse = await fetch('/api/mcp-oauth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            serverId,
+            registrationEndpoint: server.oauthRegistrationEndpoint 
+          }),
+        });
+
+        if (!registerResponse.ok) {
+          console.error('Dynamic client registration failed');
+          onUpdateServers(servers.map(s => {
+            if (s.id !== serverId) return s;
+            return { ...s, status: 'error' as const, lastChecked: Date.now() };
+          }));
+          return;
+        }
+
+        // Update server with new client_id
+        const registerData = await registerResponse.json() as { clientId: string };
+        onUpdateServers(servers.map(s => {
+          if (s.id !== serverId) return s;
+          return { ...s, oauthClientId: registerData.clientId };
+        }));
+      }
+
+      // Initiate OAuth flow
       const response = await fetch('/api/mcp-oauth/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -98,7 +117,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
       } else {
         console.error('Failed to initiate OAuth flow');
-        // Mark as error
         onUpdateServers(servers.map(s => {
           if (s.id !== serverId) return s;
           return { ...s, status: 'error' as const, lastChecked: Date.now() };
@@ -106,7 +124,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       }
     } catch (error) {
       console.error('OAuth initiation failed:', error);
-      // Mark as error
       onUpdateServers(servers.map(s => {
         if (s.id !== serverId) return s;
         return { ...s, status: 'error' as const, lastChecked: Date.now() };
@@ -251,19 +268,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
                     >
                       Connect
                     </button>
-                    <button
-                      onClick={() => setEditingOAuth(server.id)}
-                      className={`px-3 py-1 text-xs rounded-md transition ${
-                        server.oauthEnabled
-                          ? 'bg-green-600 text-white hover:bg-green-500'
-                          : isDark 
-                            ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                      title="Configure OAuth"
-                    >
-                      🔐 OAuth
-                    </button>
+
                     <button
                       onClick={() => toggleServer(server.id)}
                       className={`relative w-10 h-5 rounded-full transition ${
@@ -344,207 +349,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         </div>
       </div>
 
-      {/* OAuth Configuration Modal */}
-      {editingOAuth && (
-        <OAuthModal
-          server={servers.find(s => s.id === editingOAuth)!}
-          theme={theme}
-          onSave={(updates) => {
-            onUpdateServers(servers.map(s => 
-              s.id === editingOAuth ? { ...s, ...updates } : s
-            ));
-            setEditingOAuth(null);
-          }}
-          onClose={() => setEditingOAuth(null)}
-        />
-      )}
     </div>
   );
 }
 
-// OAuth Configuration Modal
-interface OAuthModalProps {
-  server: MCPServer;
-  onSave: (updates: Partial<MCPServer>) => void;
-  onClose: () => void;
-  theme: 'light' | 'dark';
-}
 
-function OAuthModal({ server, onSave, onClose, theme }: OAuthModalProps) {
-  const isDark = theme === 'dark';
-  const [oauthEnabled, setOauthEnabled] = useState(server.oauthEnabled || false);
-  const [clientId, setClientId] = useState(server.oauthClientId || '');
-  const [clientSecret, setClientSecret] = useState(server.oauthClientSecret || '');
-  const [authEndpoint] = useState(server.oauthAuthEndpoint || '');
-  const [tokenEndpoint] = useState(server.oauthTokenEndpoint || '');
-  const [scopes, setScopes] = useState(server.oauthScopes || '');
-  const [initiating, setInitiating] = useState(false);
-
-  const handleSave = () => {
-    onSave({
-      oauthEnabled,
-      oauthClientId: clientId,
-      oauthClientSecret: clientSecret,
-      oauthAuthEndpoint: authEndpoint,
-      oauthTokenEndpoint: tokenEndpoint,
-      oauthScopes: scopes,
-    });
-  };
-
-  const handleStartOAuth = async () => {
-    if (!clientId) {
-      alert('Please enter a Client ID first');
-      return;
-    }
-
-    setInitiating(true);
-    try {
-      // Save the configuration first
-      handleSave();
-
-      // Start OAuth flow
-      const response = await fetch('/api/mcp-oauth/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverId: server.id }),
-      });
-
-      if (response.ok) {
-        const data = await response.json() as { authorizationUrl: string };
-        // Open OAuth authorization URL in new window
-        window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
-        onClose();
-      } else {
-        alert('Failed to initiate OAuth flow');
-      }
-    } catch (error) {
-      console.error('OAuth initiation failed:', error);
-      alert('Failed to initiate OAuth flow');
-    } finally {
-      setInitiating(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className={`w-full max-w-lg border rounded-2xl shadow-2xl ${
-        isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'
-      }`}>
-        <div className={`p-5 border-b ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            OAuth 2.1 Configuration
-          </h3>
-          <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Configure OAuth 2.1 authentication for {server.name}
-          </p>
-        </div>
-        <div className="p-5 space-y-4">
-          {oauthEnabled && (
-            <>
-              {/* Auto-detected endpoints (read-only) */}
-              {authEndpoint && tokenEndpoint && (
-                <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                  <p className="text-xs text-green-300 font-medium mb-2">✓ OAuth endpoints auto-detected</p>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-400">
-                      <span className="font-medium">Auth:</span> {authEndpoint}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      <span className="font-medium">Token:</span> {tokenEndpoint}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Client ID *</label>
-                <input
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
-                  placeholder="your-client-id"
-                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
-                    isDark 
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Client Secret (optional)</label>
-                <input
-                  type="password"
-                  value={clientSecret}
-                  onChange={e => setClientSecret(e.target.value)}
-                  placeholder="your-client-secret"
-                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
-                    isDark 
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Scopes (optional, space-separated)</label>
-                <input
-                  value={scopes}
-                  onChange={e => setScopes(e.target.value)}
-                  placeholder="read write"
-                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500 ${
-                    isDark 
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                />
-              </div>
-
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <p className="text-xs text-blue-300">
-                  <strong>OAuth 2.1 with PKCE:</strong> This implementation uses OAuth 2.1 with PKCE (Proof Key for Code Exchange) 
-                  as required by the MCP Authorization Specification (2025-06-18). PKCE provides enhanced security for public clients.
-                </p>
-              </div>
-            </>
-          )}
-
-          {!oauthEnabled && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-              <p className="text-xs text-yellow-300">
-                OAuth was not detected for this server. You can manually configure OAuth endpoints if needed.
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className={`px-4 py-2 text-sm transition ${
-                isDark 
-                  ? 'text-gray-400 hover:text-white' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Cancel
-            </button>
-            {oauthEnabled && clientId && (
-              <button
-                onClick={handleStartOAuth}
-                disabled={initiating}
-                className="px-6 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 transition disabled:opacity-50"
-              >
-                {initiating ? 'Starting...' : '🔐 Start OAuth Flow'}
-              </button>
-            )}
-            <button
-              onClick={handleSave}
-              className="px-6 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
