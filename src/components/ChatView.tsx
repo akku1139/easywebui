@@ -7,9 +7,11 @@ interface Props {
   streamContent: string;
   onSend: (content: string) => void;
   error?: string;
+  theme: 'light' | 'dark';
 }
 
-export default function ChatView({ messages, isLoading, streamContent, onSend, error }: Props) {
+export default function ChatView({ messages, isLoading, streamContent, onSend, error, theme }: Props) {
+  const isDark = theme === 'dark';
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -52,8 +54,12 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">Start a Conversation</h2>
-              <p className="text-gray-400 text-sm">
+              <h2 className={`text-xl font-semibold mb-2 ${
+                isDark ? 'text-white' : 'text-gray-900'
+              }`}>Start a Conversation</h2>
+              <p className={`text-sm ${
+                isDark ? 'text-gray-400' : 'text-gray-600'
+              }`}>
                 Send a message to begin. Your conversations are enhanced with memory and MCP tools.
               </p>
             </div>
@@ -62,7 +68,7 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
 
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
           {messages.map(msg => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble key={msg.id} message={msg} isDark={isDark} />
           ))}
           
           {streamContent && (
@@ -72,8 +78,12 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
-              <div className="flex-1 bg-gray-800/50 rounded-2xl rounded-tl-sm px-4 py-3">
-                <p className="text-gray-200 whitespace-pre-wrap text-sm leading-relaxed">{streamContent}</p>
+              <div className={`flex-1 rounded-2xl rounded-tl-sm px-4 py-3 ${
+                isDark ? 'bg-gray-800/50' : 'bg-gray-100'
+              }`}>
+                <p className={`whitespace-pre-wrap text-sm leading-relaxed ${
+                  isDark ? 'text-gray-200' : 'text-gray-800'
+                }`}>{streamContent}</p>
                 <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
               </div>
             </div>
@@ -86,7 +96,9 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
-              <div className="bg-gray-800/50 rounded-2xl rounded-tl-sm px-4 py-3">
+              <div className={`rounded-2xl rounded-tl-sm px-4 py-3 ${
+                isDark ? 'bg-gray-800/50' : 'bg-gray-100'
+              }`}>
                 <div className="flex gap-1.5">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -107,9 +119,15 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-700 p-4">
+      <div className={`border-t p-4 ${
+        isDark ? 'border-gray-700' : 'border-gray-200'
+      }`}>
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="relative flex items-end bg-gray-800 border border-gray-600 rounded-2xl focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition">
+          <div className={`relative flex items-end border rounded-2xl focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition ${
+            isDark 
+              ? 'bg-gray-800 border-gray-600' 
+              : 'bg-white border-gray-300'
+          }`}>
             <textarea
               ref={textareaRef}
               value={input}
@@ -117,7 +135,11 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
               onKeyDown={handleKeyDown}
               placeholder="Type a message... (Shift+Enter for new line)"
               rows={1}
-              className="flex-1 bg-transparent text-white placeholder-gray-400 px-4 py-3 resize-none focus:outline-none text-sm max-h-[200px]"
+              className={`flex-1 bg-transparent px-4 py-3 resize-none focus:outline-none text-sm max-h-[200px] ${
+                isDark 
+                  ? 'text-white placeholder-gray-400' 
+                  : 'text-gray-900 placeholder-gray-500'
+              }`}
               disabled={isLoading}
             />
             <button
@@ -136,7 +158,7 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, isDark }: { message: Message; isDark: boolean }) {
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
 
@@ -148,9 +170,15 @@ function MessageBubble({ message }: { message: Message }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <div className="flex-1 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl px-4 py-3">
-          <p className="text-xs text-yellow-400 font-medium mb-1">Tool Result</p>
-          <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono">{message.content}</pre>
+        <div className={`flex-1 border rounded-2xl px-4 py-3 ${
+          isDark 
+            ? 'bg-yellow-500/5 border-yellow-500/20' 
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <p className="text-xs text-yellow-600 font-medium mb-1">Tool Result</p>
+          <pre className={`text-xs whitespace-pre-wrap font-mono ${
+            isDark ? 'text-gray-300' : 'text-gray-700'
+          }`}>{message.content}</pre>
         </div>
       </div>
     );
@@ -177,9 +205,13 @@ function MessageBubble({ message }: { message: Message }) {
         <div className={`rounded-2xl px-4 py-3 ${
           isUser
             ? 'bg-blue-500/20 border border-blue-500/30 rounded-tr-sm'
-            : 'bg-gray-800/50 rounded-tl-sm'
+            : isDark
+              ? 'bg-gray-800/50 rounded-tl-sm'
+              : 'bg-gray-100 rounded-tl-sm'
         }`}>
-          <p className="text-gray-200 whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+          <p className={`whitespace-pre-wrap text-sm leading-relaxed ${
+            isDark ? 'text-gray-200' : 'text-gray-800'
+          }`}>{message.content}</p>
         </div>
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -190,7 +222,9 @@ function MessageBubble({ message }: { message: Message }) {
             ))}
           </div>
         )}
-        <span className="text-xs text-gray-500 mt-1 px-1">
+        <span className={`text-xs mt-1 px-1 ${
+          isDark ? 'text-gray-500' : 'text-gray-400'
+        }`}>
           {new Date(message.timestamp).toLocaleTimeString()}
         </span>
       </div>

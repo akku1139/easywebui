@@ -37,6 +37,7 @@ describe('Sidebar', () => {
   const defaultProps = {
     conversations: mockConversations,
     activeId: null,
+    theme: 'dark' as const,
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onDelete: vi.fn(),
@@ -44,7 +45,6 @@ describe('Sidebar', () => {
     onOpenSettings: vi.fn(),
     onOpenMemory: vi.fn(),
     onOpenMCP: vi.fn(),
-    onLogout: vi.fn(),
   };
 
   it('should render conversations', () => {
@@ -128,13 +128,6 @@ describe('Sidebar', () => {
     
     fireEvent.click(screen.getByText('Settings'));
     expect(defaultProps.onOpenSettings).toHaveBeenCalled();
-  });
-
-  it('should call onLogout when logout button is clicked', () => {
-    render(<Sidebar {...defaultProps} />);
-    
-    fireEvent.click(screen.getByText('Logout'));
-    expect(defaultProps.onLogout).toHaveBeenCalled();
   });
 
   it('should display empty state when no conversations', () => {

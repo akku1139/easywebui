@@ -3,6 +3,7 @@ import { Conversation } from '../types';
 interface Props {
   conversations: Conversation[];
   activeId: string | null;
+  theme: 'light' | 'dark';
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -10,12 +11,11 @@ interface Props {
   onOpenSettings: () => void;
   onOpenMemory: () => void;
   onOpenMCP: () => void;
-  onLogout: () => void;
 }
 
 export default function Sidebar({
-  conversations, activeId, onSelect, onNew, onDelete, onTogglePin,
-  onOpenSettings, onOpenMemory, onOpenMCP, onLogout
+  conversations, activeId, theme, onSelect, onNew, onDelete, onTogglePin,
+  onOpenSettings, onOpenMemory, onOpenMCP
 }: Props) {
   // Sort conversations: pinned first, then by updatedAt descending
   const sortedConversations = [...conversations].sort((a, b) => {
@@ -26,10 +26,17 @@ export default function Sidebar({
 
   const pinnedConversations = sortedConversations.filter(c => c.pinned);
   const unpinnedConversations = sortedConversations.filter(c => !c.pinned);
+  
+  const isDark = theme === 'dark';
+  
   return (
-    <div className="w-72 h-full bg-gray-900 border-r border-gray-700 flex flex-col">
+    <div className={`w-72 h-full flex flex-col ${
+      isDark 
+        ? 'bg-gray-900 border-gray-700' 
+        : 'bg-white border-gray-200'
+    } border-r`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-700">
+      <div className={`p-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
         <button
           onClick={onNew}
           className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm font-medium rounded-lg hover:from-blue-600 hover:to-purple-700 transition flex items-center justify-center gap-2"
@@ -119,15 +126,6 @@ export default function Sidebar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           Settings
-        </button>
-        <button
-          onClick={onLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition text-sm"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Logout
         </button>
       </div>
     </div>

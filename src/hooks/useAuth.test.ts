@@ -25,9 +25,4 @@ describe('useAuth', () => {
     expect(result.current.auth.isAuthenticated).toBe(true);
     expect(result.current.auth.username).toBe('admin');
   });
-
-  it('should provide logout function', () => {
-    const { result } = renderHook(() => useAuth());
-    expect(typeof result.current.logout).toBe('function');
-  });
 });

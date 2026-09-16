@@ -18,11 +18,5 @@ export function useAuth() {
     return { isAuthenticated: true, username: '', token: '' };
   });
 
-  const logout = () => {
-    localStorage.removeItem(AUTH_KEY);
-    // Force browser to show Basic Auth dialog again
-    window.location.href = '/';
-  };
-
-  return { auth, logout };
+  return { auth };
 }

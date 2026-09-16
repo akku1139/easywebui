@@ -13,7 +13,7 @@ import SettingsPanel from './components/SettingsPanel';
 type Panel = 'none' | 'memory' | 'mcp' | 'settings';
 
 export default function App() {
-  const { auth, logout } = useAuth();
+  const { auth } = useAuth();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [chatError, setChatError] = useState('');
@@ -70,6 +70,7 @@ export default function App() {
       <Sidebar
         conversations={chat.conversations}
         activeId={chat.activeConversationId}
+        theme={resolvedTheme}
         onSelect={chat.setActiveConversationId}
         onNew={chat.createConversation}
         onDelete={chat.deleteConversation}
@@ -77,15 +78,22 @@ export default function App() {
         onOpenSettings={() => setActivePanel('settings')}
         onOpenMemory={() => setActivePanel('memory')}
         onOpenMCP={() => setActivePanel('mcp')}
-        onLogout={logout}
       />
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col h-full bg-gray-850">
+      <main className={`flex-1 flex flex-col h-full ${
+        resolvedTheme === 'dark' ? 'bg-gray-900' : 'bg-white'
+      }`}>
         {/* Top Bar */}
-        <header className="h-14 border-b border-gray-700 flex items-center justify-between px-4 shrink-0">
+        <header className={`h-14 border-b flex items-center justify-between px-4 shrink-0 ${
+          resolvedTheme === 'dark' 
+            ? 'border-gray-700' 
+            : 'border-gray-200'
+        }`}>
           <div className="flex items-center gap-3">
-            <h1 className="text-sm font-medium text-white">
+            <h1 className={`text-sm font-medium ${
+              resolvedTheme === 'dark' ? 'text-white' : 'text-gray-900'
+            }`}>
               {chat.activeConversation?.title || 'AI Chat'}
             </h1>
             {chat.activeConversation && (
@@ -148,6 +156,7 @@ export default function App() {
           streamContent={chat.streamContent}
           onSend={handleSend}
           error={chatError}
+          theme={resolvedTheme}
         />
       </main>
 
