@@ -1,4 +1,9 @@
-import '@testing-library/jest-dom/vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
+import { expect } from 'vitest';
+
+// Explicitly extend Vitest's expect with jest-dom matchers
+// Required for CI environments where globals mode may not auto-extend
+expect.extend(matchers);
 
 // Mock localStorage
 const localStorageMock = (() => {
