@@ -207,6 +207,7 @@ function ChatApp() {
           onAddFact={chat.addUserFact}
           onRemoveFact={chat.removeUserFact}
           onClose={() => setActivePanel('none')}
+          theme={resolvedTheme}
         />
       )}
       {activePanel === 'mcp' && (
@@ -214,6 +215,7 @@ function ChatApp() {
           servers={settings.mcpServers}
           onUpdateServers={handleUpdateMCPServers}
           onClose={() => setActivePanel('none')}
+          theme={resolvedTheme}
         />
       )}
       {activePanel === 'settings' && (
