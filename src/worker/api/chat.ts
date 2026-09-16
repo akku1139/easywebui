@@ -43,13 +43,27 @@ export async function chatCompletion(c: Context<{ Bindings: Env }>) {
     }
   }
   
+  // Get endpoint configuration
+  let baseUrl = c.env.OPENAI_BASE_URL || 'https://api.openai.com';
+  let apiKey = c.env.OPENAI_API_KEY;
+  
+  if (body.endpoint_id) {
+    const endpoint = await db.prepare(
+      'SELECT base_url, api_key FROM api_endpoints WHERE id = ? AND enabled = 1'
+    ).bind(body.endpoint_id).first() as any;
+    
+    if (endpoint) {
+      baseUrl = endpoint.base_url;
+      apiKey = endpoint.api_key;
+    }
+  }
+  
   // Proxy to OpenAI
-  const baseUrl = c.env.OPENAI_BASE_URL || 'https://api.openai.com';
   const response = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${c.env.OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ messages, model, stream }),
   });
