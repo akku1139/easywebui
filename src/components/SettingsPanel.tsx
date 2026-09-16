@@ -6,9 +6,11 @@ interface Props {
   settings: Settings;
   onUpdate: (settings: Settings) => void;
   onClose: () => void;
+  theme: 'light' | 'dark';
 }
 
-export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
+export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Props) {
+  const isDark = theme === 'dark';
   const [local, setLocal] = useState<Settings>({ ...settings });
   const [editingEndpoint, setEditingEndpoint] = useState<APIEndpoint | null>(null);
   const [showAddEndpoint, setShowAddEndpoint] = useState(false);
@@ -59,9 +61,15 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl flex flex-col">
+      <div className={`w-full max-w-2xl max-h-[90vh] border rounded-2xl shadow-2xl flex flex-col ${
+        isDark 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-300'
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-700">
+        <div className={`flex items-center justify-between p-5 border-b ${
+          isDark ? 'border-gray-700' : 'border-gray-300'
+        }`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -69,9 +77,15 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-white">Settings</h2>
+            <h2 className={`text-lg font-semibold ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>Settings</h2>
           </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-white transition">
+          <button onClick={onClose} className={`p-2 transition ${
+            isDark 
+              ? 'text-gray-400 hover:text-white' 
+              : 'text-gray-600 hover:text-gray-900'
+          }`}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -83,7 +97,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
           {/* API Endpoints */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+              <h3 className={`text-sm font-medium flex items-center gap-2 ${
+                isDark ? 'text-white' : 'text-gray-900'
+              }`}>
                 <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                 </svg>
@@ -109,7 +125,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                     className={`p-3 rounded-lg border transition ${
                       local.activeEndpointId === endpoint.id
                         ? 'bg-blue-500/10 border-blue-500/30'
-                        : 'bg-gray-700/50 border-gray-600'
+                        : isDark
+                          ? 'bg-gray-700/50 border-gray-600'
+                          : 'bg-gray-100 border-gray-300'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -117,23 +135,37 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                         <div className={`w-2 h-2 rounded-full ${
                           endpoint.baseUrl && endpoint.apiKey ? 'bg-green-400' : 'bg-red-400'
                         }`} />
-                        <span className="text-sm font-medium text-white">{endpoint.name}</span>
+                        <span className={`text-sm font-medium ${
+                          isDark ? 'text-white' : 'text-gray-900'
+                        }`}>{endpoint.name}</span>
                         {local.activeEndpointId === endpoint.id && (
-                          <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">Active</span>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            isDark 
+                              ? 'bg-blue-500/20 text-blue-300' 
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>Active</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
                         {local.activeEndpointId !== endpoint.id && (
                           <button
                             onClick={() => setActiveEndpoint(endpoint.id)}
-                            className="px-2 py-1 text-xs bg-gray-600 text-gray-200 rounded hover:bg-gray-500 transition"
+                            className={`px-2 py-1 text-xs rounded transition ${
+                              isDark 
+                                ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
                           >
                             Activate
                           </button>
                         )}
                         <button
                           onClick={() => setEditingEndpoint(endpoint)}
-                          className="p-1 text-gray-400 hover:text-white transition"
+                          className={`p-1 transition ${
+                            isDark 
+                              ? 'text-gray-400 hover:text-white' 
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -141,7 +173,11 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                         </button>
                         <button
                           onClick={() => deleteEndpoint(endpoint.id)}
-                          className="p-1 text-gray-400 hover:text-red-400 transition"
+                          className={`p-1 transition ${
+                            isDark 
+                              ? 'text-gray-400 hover:text-red-400' 
+                              : 'text-gray-600 hover:text-red-600'
+                          }`}
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -149,7 +185,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                         </button>
                       </div>
                     </div>
-                    <div className="text-xs text-gray-400 space-y-1">
+                    <div className={`text-xs space-y-1 ${
+                      isDark ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
                       <div>URL: {endpoint.baseUrl || '(not set)'}</div>
                       <div>Model: {endpoint.model}</div>
                     </div>
@@ -161,7 +199,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 
           {/* Memory Settings */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <h3 className={`text-sm font-medium flex items-center gap-2 ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>
               <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
@@ -172,11 +212,19 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 type="checkbox"
                 checked={local.memoryEnabled}
                 onChange={e => setLocal({ ...local, memoryEnabled: e.target.checked })}
-                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+                className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
+                  isDark 
+                    ? 'bg-gray-700 border-gray-600' 
+                    : 'bg-white border-gray-300'
+                }`}
               />
               <div>
-                <span className="text-sm text-white">Enable Memory</span>
-                <p className="text-xs text-gray-400">Inject user facts and conversation summaries into context</p>
+                <span className={`text-sm ${
+                  isDark ? 'text-white' : 'text-gray-900'
+                }`}>Enable Memory</span>
+                <p className={`text-xs ${
+                  isDark ? 'text-gray-400' : 'text-gray-600'
+                }`}>Inject user facts and conversation summaries into context</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
@@ -184,18 +232,28 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 type="checkbox"
                 checked={local.autoMemory}
                 onChange={e => setLocal({ ...local, autoMemory: e.target.checked })}
-                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+                className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
+                  isDark 
+                    ? 'bg-gray-700 border-gray-600' 
+                    : 'bg-white border-gray-300'
+                }`}
               />
               <div>
-                <span className="text-sm text-white">Auto-detect Facts</span>
-                <p className="text-xs text-gray-400">Automatically extract and store important facts from conversations</p>
+                <span className={`text-sm ${
+                  isDark ? 'text-white' : 'text-gray-900'
+                }`}>Auto-detect Facts</span>
+                <p className={`text-xs ${
+                  isDark ? 'text-gray-400' : 'text-gray-600'
+                }`}>Automatically extract and store important facts from conversations</p>
               </div>
             </label>
           </div>
 
           {/* Custom System Prompt */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <h3 className={`text-sm font-medium flex items-center gap-2 ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>
               <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
@@ -207,9 +265,15 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 onChange={e => setLocal({ ...local, customSystemPrompt: e.target.value })}
                 placeholder="You are a helpful AI assistant. (Leave empty to use default)"
                 rows={6}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none font-mono"
+                className={`w-full px-3 py-2 border rounded-lg text-sm resize-none font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 ${
+                  isDark 
+                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                }`}
               />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className={`text-xs mt-1 ${
+                isDark ? 'text-gray-400' : 'text-gray-600'
+              }`}>
                 Customize the AI's behavior. This replaces the default system prompt. Memory and tools are still appended.
               </p>
             </div>
@@ -217,7 +281,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 
           {/* Theme */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <h3 className={`text-sm font-medium flex items-center gap-2 ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>
               <svg className="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>
@@ -229,14 +295,16 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'light'
                     ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                    : isDark
+                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                 }`}
               >
                 <div className="flex flex-col items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
-                  <span className="text-sm font-medium">Light</span>
+                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Light</span>
                 </div>
               </button>
               <button
@@ -244,14 +312,16 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'dark'
                     ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                    : isDark
+                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                 }`}
               >
                 <div className="flex flex-col items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                   </svg>
-                  <span className="text-sm font-medium">Dark</span>
+                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Dark</span>
                 </div>
               </button>
               <button
@@ -259,14 +329,16 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'system'
                     ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                    : isDark
+                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
+                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
                 }`}
               >
                 <div className="flex flex-col items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-sm font-medium">System</span>
+                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>System</span>
                 </div>
               </button>
             </div>
@@ -274,10 +346,16 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-700 flex justify-end gap-3">
+        <div className={`p-5 border-t flex justify-end gap-3 ${
+          isDark ? 'border-gray-700' : 'border-gray-300'
+        }`}>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition"
+            className={`px-4 py-2 text-sm transition ${
+              isDark 
+                ? 'text-gray-400 hover:text-white' 
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
           >
             Cancel
           </button>
@@ -294,6 +372,7 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
       {(showAddEndpoint || editingEndpoint) && (
         <EndpointModal
           endpoint={editingEndpoint}
+          theme={theme}
           onSave={(data) => {
             if (editingEndpoint) {
               updateEndpoint(editingEndpoint.id, data);
@@ -314,11 +393,13 @@ export default function SettingsPanel({ settings, onUpdate, onClose }: Props) {
 // Endpoint Modal Component
 interface EndpointModalProps {
   endpoint: APIEndpoint | null;
+  theme: 'light' | 'dark';
   onSave: (data: Omit<APIEndpoint, 'id' | 'createdAt'>) => void;
   onClose: () => void;
 }
 
-function EndpointModal({ endpoint, onSave, onClose }: EndpointModalProps) {
+function EndpointModal({ endpoint, theme, onSave, onClose }: EndpointModalProps) {
+  const isDark = theme === 'dark';
   const [name, setName] = useState(endpoint?.name || '');
   const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl || '');
   const [apiKey, setApiKey] = useState(endpoint?.apiKey || '');
@@ -339,54 +420,88 @@ function EndpointModal({ endpoint, onSave, onClose }: EndpointModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="w-full max-w-lg bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl">
-        <div className="p-5 border-b border-gray-700">
-          <h3 className="text-lg font-semibold text-white">
+      <div className={`w-full max-w-lg border rounded-2xl shadow-2xl ${
+        isDark 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-300'
+      }`}>
+        <div className={`p-5 border-b ${
+          isDark ? 'border-gray-700' : 'border-gray-300'
+        }`}>
+          <h3 className={`text-lg font-semibold ${
+            isDark ? 'text-white' : 'text-gray-900'
+          }`}>
             {endpoint ? 'Edit Endpoint' : 'Add Endpoint'}
           </h3>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Name</label>
+            <label className={`block text-xs mb-1 ${
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            }`}>Name</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g., OpenAI, Claude, Local LLM"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                isDark 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+              }`}
               required
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Base URL (OpenAI Compatible)</label>
+            <label className={`block text-xs mb-1 ${
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            }`}>Base URL (OpenAI Compatible)</label>
             <input
               value={baseUrl}
               onChange={e => setBaseUrl(e.target.value)}
               placeholder="https://api.openai.com"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                isDark 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+              }`}
               required
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className={`text-xs mt-1 ${
+              isDark ? 'text-gray-500' : 'text-gray-600'
+            }`}>
               Supports: OpenAI, Cloudflare Workers AI, Azure OpenAI, Ollama, etc.
             </p>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">API Key</label>
+            <label className={`block text-xs mb-1 ${
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            }`}>API Key</label>
             <input
               type="password"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
               placeholder="sk-..."
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                isDark 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+              }`}
               required
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Model</label>
+            <label className={`block text-xs mb-1 ${
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            }`}>Model</label>
             <input
               value={model}
               onChange={e => setModel(e.target.value)}
               placeholder="gpt-4o"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                isDark 
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+              }`}
               required
             />
           </div>
@@ -395,15 +510,25 @@ function EndpointModal({ endpoint, onSave, onClose }: EndpointModalProps) {
               type="checkbox"
               checked={isDefault}
               onChange={e => setIsDefault(e.target.checked)}
-              className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-500"
+              className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
+                isDark 
+                  ? 'bg-gray-700 border-gray-600' 
+                  : 'bg-white border-gray-300'
+              }`}
             />
-            <span className="text-sm text-white">Set as default endpoint</span>
+            <span className={`text-sm ${
+              isDark ? 'text-white' : 'text-gray-900'
+            }`}>Set as default endpoint</span>
           </label>
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition"
+              className={`px-4 py-2 text-sm transition ${
+                isDark 
+                  ? 'text-gray-400 hover:text-white' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
               Cancel
             </button>

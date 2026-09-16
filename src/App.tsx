@@ -124,11 +124,17 @@ export default function App() {
                 || settings.endpoints.find(e => e.isDefault)
                 || settings.endpoints[0];
               return (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 rounded-lg border border-gray-700">
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                  resolvedTheme === 'dark' 
+                    ? 'bg-gray-800 border-gray-700' 
+                    : 'bg-gray-100 border-gray-300'
+                }`}>
                   <div className={`w-2 h-2 rounded-full ${
                     activeEndpoint?.baseUrl ? 'bg-green-400' : 'bg-red-400'
                   }`} />
-                  <span className="text-xs text-gray-400">
+                  <span className={`text-xs ${
+                    resolvedTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                  }`}>
                     {activeEndpoint ? `${activeEndpoint.name} (${activeEndpoint.model})` : 'No endpoint'}
                   </span>
                 </div>
@@ -182,6 +188,7 @@ export default function App() {
           settings={settings}
           onUpdate={handleUpdateSettings}
           onClose={() => setActivePanel('none')}
+          theme={resolvedTheme}
         />
       )}
     </div>
