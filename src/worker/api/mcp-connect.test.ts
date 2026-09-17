@@ -72,6 +72,34 @@ describe('POST /api/mcp-servers/connect', () => {
     expect(env.AI_CHAT_DB._getData('mcp_servers')[0].status).toBe('error');
   });
 
+  it('surfaces the underlying network failure instead of a generic message', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('fetch failed'));
+    const response = await connect();
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('fetch failed') });
+  });
+
+  it('explains a 405 as a Streamable HTTP transport mismatch', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('Method Not Allowed', { status: 405 }));
+    const response = await connect();
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('Streamable HTTP') });
+  });
+
+  it('includes the upstream error body for HTTP failures', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{"detail":"bad path"}', { status: 404 }));
+    const response = await connect();
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('bad path') });
+  });
+
+  it('reports invalid JSON bodies instead of failing opaquely', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response('<html>not json</html>', { headers: { 'Content-Type': 'application/json' } }));
+    const response = await connect();
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('invalid JSON') });
+  });
+
   it('reports authentication required when the stored OAuth token is missing', async () => {
     env.AI_CHAT_DB._getData('mcp_servers')[0].oauth_enabled = 1;
     const response = await connect();

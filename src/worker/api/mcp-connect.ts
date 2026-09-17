@@ -8,6 +8,14 @@ class MCPError extends Error {
 
 type RPC = { jsonrpc?: string; id?: number; result?: any; error?: { message?: string } };
 
+// Keep the offending body visible: MCP servers behind auth pages or proxies
+// often return HTML with a JSON content type.
+function parseJson(text: string): RPC {
+  try { return JSON.parse(text); } catch {
+    throw new MCPError(`MCP server returned invalid JSON: ${text.slice(0, 200)}`);
+  }
+}
+
 // Streamable HTTP may reply with JSON or a long-lived SSE stream. Stop when
 // the matching result arrives rather than awaiting the end of the SSE stream.
 async function readResult(response: Response, id: number): Promise<any> {
@@ -42,12 +50,12 @@ async function readResult(response: Response, id: number): Promise<any> {
           const data = event.split('\n').filter(line => line.startsWith('data:'))
             .map(line => line.slice(5).replace(/^ /, '')).join('\n');
           if (!data) continue;
-          const rpc = JSON.parse(data) as RPC;
+          const rpc = parseJson(data);
           if (rpc.id === id) return result(rpc);
         }
       } else if (done) {
         if (!type.includes('application/json')) throw new MCPError('MCP endpoint must support Streamable HTTP (JSON or SSE replies)');
-        return result(JSON.parse(text));
+        return result(parseJson(text));
       }
       if (done) throw new MCPError('MCP stream ended without a matching response');
     }
@@ -98,8 +106,11 @@ export async function handleMCPConnect(c: Context<{ Bindings: Env }>) {
         body: JSON.stringify({ jsonrpc: '2.0', ...(notification ? {} : { id: requestId }), method, ...(params === undefined ? {} : { params }) }),
       });
       if (!response.ok) {
-        await response.body?.cancel();
-        throw new MCPError(`MCP server returned HTTP ${response.status}`, response.status === 401);
+        const body = (await response.text().catch(() => '')).slice(0, 300);
+        if (response.status === 405) {
+          throw new MCPError(`MCP endpoint answered HTTP 405 — it does not accept POST (Streamable HTTP). Check the MCP URL. ${body}`);
+        }
+        throw new MCPError(`MCP server returned HTTP ${response.status}: ${body || '(no body)'}`, response.status === 401);
       }
       if (notification) { await response.body?.cancel(); return; }
       if (method === 'initialize') sessionId = response.headers.get('Mcp-Session-Id');
@@ -138,6 +149,10 @@ export async function handleMCPConnect(c: Context<{ Bindings: Env }>) {
       .bind(JSON.stringify(tools), 'connected', lastChecked, serverId).run();
     return c.json({ status: 'connected', tools, lastChecked: lastChecked * 1000 });
   } catch (error) {
-    return fail(error instanceof MCPError ? error : new MCPError(controller.signal.aborted ? 'MCP connection timed out' : 'MCP connection or response failed'));
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return fail(error instanceof MCPError ? error
+      : new MCPError(controller.signal.aborted
+        ? `MCP connection timed out after 20s — the MCP server may be unreachable from Cloudflare (e.g. localhost or a firewall). (${detail})`
+        : `MCP connection failed: ${detail}`));
   } finally { clearTimeout(timeout); }
 }
