@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChatView from './ChatView';
 import { Message } from '../types';
 
@@ -33,6 +33,30 @@ describe('ChatView', () => {
     
     expect(screen.getByText('Hello')).toBeInTheDocument();
     expect(screen.getByText('Hi there!')).toBeInTheDocument();
+  });
+
+  it('edits user text with explicit branch semantics and supports cancel and branch actions', async () => {
+    const onEdit = vi.fn().mockResolvedValue(undefined);
+    const onBranch = vi.fn().mockResolvedValue(undefined);
+    render(<ChatView {...defaultProps} onEdit={onEdit} onBranch={onBranch} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Edit message')).toHaveValue('Hello');
+    fireEvent.change(screen.getByLabelText('Edit message'), { target: { value: 'Changed question' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onEdit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Edit message'), { target: { value: 'Changed question' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & regenerate' }));
+    await waitFor(() => expect(onEdit).toHaveBeenCalledWith('msg-1', 'Changed question'));
+    await waitFor(() => expect(screen.queryByLabelText('Edit message')).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Branch from here' })[1]);
+    await waitFor(() => expect(onBranch).toHaveBeenCalledWith('msg-2'));
+  });
+
+  it('can disable input without showing another conversation’s loading indicator', () => {
+    render(<ChatView {...defaultProps} inputDisabled isLoading={false} />);
+    expect(screen.getByPlaceholderText(/Type a message/)).toBeDisabled();
+    expect(screen.queryByLabelText('Loading response')).not.toBeInTheDocument();
   });
 
   it.each(['', ' \n\t'])('renders tool-only messages without an empty bubble or avatar (%j)', content => {

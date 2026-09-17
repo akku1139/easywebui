@@ -201,11 +201,24 @@ function ChatApp() {
         {serverSettings.syncError && <button onClick={serverSettings.retry}>Retry loading settings</button>}
         {chat.syncError && !chat.ready && <button onClick={chat.retry}>Retry loading conversations</button>}
         {chat.retryNotice && <p role="status" className="px-4 py-2 text-sm text-amber-500">{chat.retryNotice}</p>}
+        {chat.isLoading && !chat.isActiveGenerating && <p className="px-4 py-2 text-xs text-gray-500">Generating in another chat. You can browse here; sending is available when it finishes.</p>}
         {/* Chat */}
         <ChatView
+          key={chat.activeConversationId ?? 'new'}
           messages={chat.activeConversation?.messages || []}
-          isLoading={chat.isLoading || !serverSettings.ready || !chat.ready}
+          isLoading={chat.isActiveGenerating}
+          inputDisabled={chat.isLoading || !serverSettings.ready || !chat.ready}
           streamContent={chat.streamContent}
+          onBranch={async messageId => {
+            const branch = await chat.branchConversation(messageId);
+            navigate(`/c/${branch.id}`);
+          }}
+          onEdit={async (messageId, content) => {
+            const branch = await chat.branchConversation(messageId, true);
+            navigate(`/c/${branch.id}`);
+            try { await chat.sendMessage(content, branch); }
+            catch (error) { setChatError(error instanceof Error ? error.message : 'Generation failed'); }
+          }}
           onSend={handleSend}
           error={chatError || serverSettings.syncError || chat.syncError || ''}
           theme={resolvedTheme}

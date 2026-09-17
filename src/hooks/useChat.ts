@@ -15,6 +15,7 @@ export function useChat(settings: Settings) {
   const [summaries, setSummaries] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [generatingConversationId, setGeneratingConversationId] = useState<string | null>(null);
   const [streamContent, setStreamContent] = useState('');
   const [retryNotice, setRetryNotice] = useState('');
   const [ready, setReady] = useState(false);
@@ -127,15 +128,39 @@ export function useChat(settings: Settings) {
   // Bound automatic work/cost without cutting off normal search + execution flows.
   const MAX_TOOL_ROUNDS = 20;
 
-  const sendMessage = async (content: string) => {
+  const branchConversation = async (messageId: string, before = false) => {
+    if (busy.current) throw new Error('Wait for the current response before branching.');
+    const source = activeConversation;
+    if (!source) throw new Error('No conversation selected.');
+    const index = source.messages.findIndex(m => m.id === messageId);
+    if (index < 0) throw new Error('Message not found.');
+    if (before && source.messages[index].role !== 'user') throw new Error('Only user messages can be edited.');
+    let end = before ? index : index + 1;
+    // Keep an entire assistant/tool-result group, including parallel calls.
+    while (end < source.messages.length && source.messages[end].role === 'tool') end++;
+    const branch: Conversation = { ...source, id: generateId(), pinned: false,
+      title: `${source.title} (branch)`, createdAt: Date.now(), updatedAt: Date.now(),
+      messages: structuredClone(source.messages.slice(0, end)) };
+    const saved = await persist(async () => {
+      await server.saveConversation(branch);
+      commitConversations([branch, ...convRef.current]);
+      return branch;
+    });
+    if (!saved) throw new Error('Could not save branch. Original conversation is unchanged.');
+    setActiveConversationId(saved.id);
+    return saved;
+  };
+
+  const sendMessage = async (content: string, target?: Conversation) => {
     if (!ready) throw new Error('Server data is still loading');
     if (!activeEndpoint) throw new Error('No active model. Configure a provider and model in Settings.');
     if (!activeEndpoint.baseUrl || !activeEndpoint.apiKey) throw new Error('API configuration is missing. Please configure in Settings.');
     if (busy.current) return;
     busy.current = true; setIsLoading(true); setStreamContent(''); setRetryNotice('');
     try {
-      const conv = activeConversation ?? await createConversation();
+      const conv = target ?? activeConversation ?? await createConversation();
       if (!conv) throw new Error('Failed to save conversation');
+      setGeneratingConversationId(conv.id);
       const user: Message = { id: generateId(), role: 'user', content, timestamp: Date.now() };
       let working = { ...conv, messages: [...conv.messages, user], updatedAt: Date.now(),
         model: activeEndpoint.model, title: conv.messages.length ? conv.title : content.slice(0, 50) };
@@ -250,7 +275,7 @@ export function useChat(settings: Settings) {
         } catch (error) { setSyncError(`Automatic memory failed: ${errorText(error)}`); }
       }
       return assistant;
-    } finally { busy.current = false; setIsLoading(false); setStreamContent(''); setRetryNotice(''); }
+    } finally { busy.current = false; setIsLoading(false); setGeneratingConversationId(null); setStreamContent(''); setRetryNotice(''); }
   };
   const addUserFact = async (content: string, category: UserFact['category'] = 'other') => storeFact({
     id: generateId(), content, category, createdAt: Date.now(), updatedAt: Date.now(), source: 'explicit',
@@ -269,7 +294,10 @@ export function useChat(settings: Settings) {
     } catch (error) { setSyncError(`Summary failed: ${errorText(error)}`); }
   };
   return { conversations, activeConversation, activeConversationId, setActiveConversationId,
-    createConversation, deleteConversation, togglePin, sendMessage, isLoading, streamContent, retryNotice,
+    createConversation, branchConversation, deleteConversation, togglePin, sendMessage, isLoading,
+    isActiveGenerating: isLoading && generatingConversationId === activeConversationId,
+    streamContent: generatingConversationId === activeConversationId ? streamContent : '',
+    retryNotice: generatingConversationId === activeConversationId ? retryNotice : '',
     userFacts, summaries, addUserFact, removeUserFact, summarizeAndArchive, ready, syncError,
     retry: () => { hydration.current = null; setAttempt(n => n + 1); } };
 }

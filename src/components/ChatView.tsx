@@ -6,13 +6,16 @@ import { MarkdownContent } from './MarkdownContent';
 interface Props {
   messages: Message[];
   isLoading: boolean;
+  inputDisabled?: boolean;
+  onEdit?: (messageId: string, content: string) => Promise<void>;
+  onBranch?: (messageId: string) => Promise<void>;
   streamContent: string;
   onSend: (content: string) => void;
   error?: string;
   theme: 'light' | 'dark';
 }
 
-export default function ChatView({ messages, isLoading, streamContent, onSend, error, theme }: Props) {
+export default function ChatView({ messages, isLoading, inputDisabled = isLoading, streamContent, onSend, onEdit, onBranch, error, theme }: Props) {
   const isDark = theme === 'dark';
   // Walk in order so provider call IDs reused on later turns do not relabel history.
   const resultLabels = useMemo(() => {
@@ -26,6 +29,16 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
     return labels;
   }, [messages]);
   const [input, setInput] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const runAction = async (action: () => Promise<void>) => {
+    setActionBusy(true); setActionError('');
+    try { await action(); setEditing(null); }
+    catch (error) { setActionError(error instanceof Error ? error.message : 'Action failed'); }
+    finally { setActionBusy(false); }
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -43,7 +56,7 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (input.trim() && !inputDisabled && !actionBusy) {
       onSend(input.trim());
       setInput('');
     }
@@ -84,8 +97,24 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
 
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
           {messages.map(msg => (
-            <MessageBubble key={msg.id} message={msg} isDark={isDark} toolName={resultLabels.get(msg.id)} />
+            <div key={msg.id}>
+              <MessageBubble message={msg} isDark={isDark} toolName={resultLabels.get(msg.id)} />
+              {editing === msg.id ? (
+                <form className="mt-2 space-y-2" onSubmit={e => { e.preventDefault(); if (draft.trim() && onEdit) void runAction(() => onEdit(msg.id, draft.trim())); }}>
+                  <textarea aria-label="Edit message" className="w-full rounded border border-gray-500 bg-transparent p-2" value={draft} onChange={e => setDraft(e.target.value)} disabled={actionBusy} />
+                  <p className="text-xs text-gray-500">Creates a new branch. The original conversation is kept.</p>
+                  <button className="mr-3 text-sm" disabled={inputDisabled || actionBusy || !draft.trim()}>Save & regenerate</button>
+                  <button type="button" className="text-sm" disabled={actionBusy} onClick={() => setEditing(null)}>Cancel</button>
+                </form>
+              ) : (onEdit || onBranch) && (msg.role === 'user' || msg.role === 'assistant') && (
+                <div className="mt-1 flex gap-3 text-xs text-gray-500">
+                  {msg.role === 'user' && onEdit && <button disabled={inputDisabled || actionBusy} onClick={() => { setEditing(msg.id); setDraft(msg.content); }}>Edit</button>}
+                  {onBranch && <button disabled={inputDisabled || actionBusy} onClick={() => void runAction(() => onBranch(msg.id))}>Branch from here</button>}
+                </div>
+              )}
+            </div>
           ))}
+          {actionError && <p role="alert" className="text-sm text-red-500">{actionError}</p>}
           
           {streamContent && (
             <div className="flex gap-3">
@@ -157,11 +186,11 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
                   ? 'text-white placeholder-gray-400' 
                   : 'text-gray-900 placeholder-gray-500'
               }`}
-              disabled={isLoading}
+              disabled={inputDisabled || actionBusy}
             />
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || inputDisabled || actionBusy}
               className="m-2 p-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 disabled:opacity-30 disabled:hover:bg-blue-500 transition"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

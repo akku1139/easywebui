@@ -51,6 +51,68 @@ function mockFetch(toolResult: { content: string; isError?: boolean } | Error) {
 }
 
 describe('useChat tool loop', () => {
+  it('scopes pending generation to its conversation while browsing another', async () => {
+    mockFetch({ content: 'ok' });
+    let finish!: (value: { content: string }) => void;
+    chatMock.mockImplementationOnce(async (_config, _messages, _tools, onStream) => {
+      onStream?.('Partial answer');
+      return new Promise(resolve => { finish = resolve; });
+    });
+    const { result } = renderHook(() => useChat(settingsWithTools()));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { await result.current.createConversation(); });
+    const origin = result.current.activeConversationId;
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.sendMessage('Question'); });
+    await waitFor(() => expect(result.current.streamContent).toBe('Partial answer'));
+    expect(result.current.isActiveGenerating).toBe(true);
+    await act(async () => { await result.current.createConversation(); });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.isActiveGenerating).toBe(false);
+    expect(result.current.streamContent).toBe('');
+    act(() => result.current.setActiveConversationId(origin));
+    expect(result.current.streamContent).toBe('Partial answer');
+    await act(async () => { finish({ content: 'Finished' }); await pending; });
+    expect(result.current.isActiveGenerating).toBe(false);
+    expect(result.current.activeConversation?.messages.at(-1)?.content).toBe('Finished');
+  });
+
+  it('edits into a persisted branch and preserves original messages', async () => {
+    mockFetch({ content: 'ok' });
+    chatMock.mockResolvedValueOnce({ content: 'Original answer' }).mockResolvedValueOnce({ content: 'Edited answer' });
+    const { result } = renderHook(() => useChat(settingsWithTools()));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { await result.current.sendMessage('Original question'); });
+    const original = structuredClone(result.current.activeConversation!);
+    let branch!: Awaited<ReturnType<typeof result.current.branchConversation>>;
+    await act(async () => { branch = await result.current.branchConversation(original.messages[0].id, true); });
+    expect(branch.messages).toHaveLength(0);
+    await act(async () => { await result.current.sendMessage('Edited question', branch); });
+    expect(result.current.activeConversation?.messages.map(m => m.content)).toEqual(['Edited question', 'Edited answer']);
+    expect(result.current.conversations.find(c => c.id === original.id)).toEqual(original);
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) => String(url) === '/api/conversations' &&
+      init?.method === 'POST' && JSON.parse(String(init.body)).id === branch.id)).toBe(true);
+  });
+
+  it('branches after the complete tool group and leaves the original unchanged on save failure', async () => {
+    mockFetch({ content: 'result' });
+    chatMock.mockResolvedValueOnce({ content: '', toolCalls: [
+      { id: 'c1', name: 'notion-fetch', arguments: {}, serverId: '' },
+      { id: 'c2', name: 'notion-fetch', arguments: {}, serverId: '' },
+    ] }).mockResolvedValueOnce({ content: 'Done' });
+    const { result } = renderHook(() => useChat(settingsWithTools()));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { await result.current.sendMessage('Fetch'); });
+    const original = structuredClone(result.current.activeConversation!);
+    await act(async () => { await result.current.branchConversation(original.messages[1].id); });
+    expect(result.current.activeConversation?.messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'tool']);
+    const before = structuredClone(result.current.conversations);
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('failed', { status: 500 }));
+    await act(async () => { await expect(result.current.branchConversation(original.messages[0].id)).rejects.toThrow('Could not save branch'); });
+    expect(result.current.conversations).toEqual(before);
+    expect(result.current.conversations.find(c => c.id === original.id)).toEqual(original);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     chatMock.mockReset();

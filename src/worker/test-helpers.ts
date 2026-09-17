@@ -74,7 +74,7 @@ function buildWherePredicate(whereSql: string, bindValues: any[]): (row: Row) =>
   let bindIndex = 0;
   const evaluated = conditions.map(({ sql, op }) => {
     const m = sql.match(
-      /^\s*("?[\w.]+"?)\s*(=|!=|<>|>=|<=|>|<)\s*(\?|('[^']*'|\d+(?:\.\d+)?))\s*$/i
+      /^\s*((?:"?\w+"?\.)?"?\w+"?)\s*(=|!=|<>|>=|<=|>|<)\s*(\?|('[^']*'|\d+(?:\.\d+)?))\s*$/i
     );
     if (!m) return { op, result: true }; // Unknown condition shape: don't filter it out.
     const column = stripIdent(m[1]);

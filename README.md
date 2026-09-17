@@ -340,3 +340,9 @@ ConnectはWorker経由でMCP Streamable HTTPの`initialize`、`notifications/ini
 これは**モデルのコンテキストへの遅延ロード**です。起動時のブラウザーへの一覧取得や接続時の`tools/list`は従来通りです。
 
 調査資料: [Anthropic: Advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use)、[OpenRouter: Tool Search](https://openrouter.ai/docs/guides/features/server-tools/tool-search)。OpenRouterネイティブ版はResponses/Messages API対応で、現行Chat Completionsでは使えないため、アプリ側で実装しています。
+### メッセージ編集と分岐
+
+- ユーザーメッセージの `Edit` → `Save & regenerate` で、その位置から編集内容を使って再生成します。元の会話・後続の回答は変更せず、新しい会話としてサイドバーに保存します。
+- `Branch from here` は、そのメッセージまでの履歴を新しい会話へコピーします。ツール呼び出しから分岐する場合は、対応する結果も一緒にコピーし、ツールを再実行しません。
+- 分岐は独立した会話です（同じ会話内のバージョン切り替えやツリー表示ではありません）。サイドバーで元の会話へ戻れます。
+- 生成中も他の会話を閲覧できます。生成途中の本文・待機アニメーションは生成元にだけ表示します。同時生成はせず、送信・編集・分岐は現在の生成完了後に可能です。

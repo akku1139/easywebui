@@ -33,4 +33,14 @@ it('restores server models in the main UI, changes selection, and sends/persists
   expect(saved).toHaveLength(1);
   expect(JSON.parse(saved[0].messages_json)).toHaveLength(2);
   expect(saved[0].model).toBe('model-b');
+  const originalId = saved[0].id;
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  fireEvent.change(screen.getByLabelText('Edit message'), { target: { value: 'Edited hello' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save & regenerate' }));
+  await waitFor(() => expect(env.AI_CHAT_DB._getData('conversations')).toHaveLength(2));
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Edited hello' })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByPlaceholderText(/Type a message/)).toBeEnabled());
+  const rows = env.AI_CHAT_DB._getData('conversations');
+  expect(JSON.parse(rows.find((row: any) => row.id === originalId)!.messages_json).map((m: any) => m.content)).toEqual(['Hello', 'Reply']);
+  expect(JSON.parse(rows.find((row: any) => row.id !== originalId)!.messages_json).map((m: any) => m.content)).toEqual(['Edited hello', 'Reply']);
 });
