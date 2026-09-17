@@ -328,3 +328,15 @@ ConnectはWorker経由でMCP Streamable HTTPの`initialize`、`notifications/ini
 サーバーURLにはStreamable HTTPのエンドポイント（例: `https://example.com/mcp`）を指定してください。旧HTTP+SSE方式の`/sse`エンドポイントやstdio接続には対応していません。またCloudflareから到達できないPC内のlocalhostには接続できません。通信・JSON-RPCエラーは接続失敗として表示し、空のツール一覧と区別します。
 
 モデルが返すストリームの`tool_calls`を組み立て、Workerの`/api/mcp-servers/call`で実行し、`tool_call_id`付きの結果をモデルに返して回答を続けます。completionsへの通信はブラウザーが行い、MCPのURL・OAuthトークンはWorkerがD1から取得します。ツールは有効な接続先から選ばれ、実行の自動再試行はしません。連続呼び出しには上限があり、失敗は画面に表示します。
+### 大量MCPツールの遅延ロード（Tool Search）
+
+有効・接続済みのツールが32件を超えるか、カタログのJSONが16,000文字を超えると、自動的に検索方式へ切り替わります。モデルに全定義を送らず、`easywebui_search_tools`と`easywebui_execute_tool`の2関数だけを公開します。小さいカタログは従来通り直接呼び出します。
+
+- 検索はサーバー名・ツール名・説明のキーワード一致。全キーワードを含む結果を順位付けし、最大5件の完全な入力スキーマを返します。空クエリとoffsetで一覧をページングできます。意味検索・自動翻訳ではありません。
+- スキーマ等の検索結果には1回16,000文字・1送信32,000文字の予算があります（トークン数ではありません）。単体で上限を超えるスキーマは切り詰めず、取得できなかった旨を返します。
+- 実行はその送信中に検索で取得したtool_idだけ。別サーバーの同名ツールも区別します。検索はMCPを実行せず、選ばれたツールだけWorker経由で実行します。
+- 過去の検索結果は履歴に保存しますが、次の送信ではスキーマ部分をモデルへの履歴から省略し、再検索させます。5ラウンド上限は維持するため、検索にも1ラウンド必要です。
+
+これは**モデルのコンテキストへの遅延ロード**です。起動時のブラウザーへの一覧取得や接続時の`tools/list`は従来通りです。
+
+調査資料: [Anthropic: Advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use)、[OpenRouter: Tool Search](https://openrouter.ai/docs/guides/features/server-tools/tool-search)。OpenRouterネイティブ版はResponses/Messages API対応で、現行Chat Completionsでは使えないため、アプリ側で実装しています。

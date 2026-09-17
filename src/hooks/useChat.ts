@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Message, Conversation, UserFact, ConversationSummary, Settings } from '../types';
 import { chatCompletion, extractMemoryFacts, summarizeConversation } from '../utils/api';
 import * as server from '../utils/api-client';
+import { createToolCatalog, SEARCH_TOOL } from '../utils/tool-catalog';
 import {
   loadConversations, saveConversations, loadUserFacts, saveUserFacts,
   loadSummaries, saveSummaries, generateId, resolveModel,
@@ -115,12 +116,6 @@ export function useChat(settings: Settings) {
       [...summaries].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10)
         .forEach(s => parts.push(`- ${s.date}: "${s.title}" - ${s.summary}`));
     }
-    const tools = settings.mcpServers.filter(s => s.enabled).sort((a, b) => a.name.localeCompare(b.name))
-      .flatMap(s => s.tools).sort((a, b) => a.name.localeCompare(b.name));
-    if (tools.length) {
-      parts.push('\n## Available Tools (via MCP):');
-      tools.forEach(t => parts.push(`- ${t.name}: ${t.description}`));
-    }
     return parts.join('\n');
   }, [settings, userFacts, summaries]);
 
@@ -128,25 +123,6 @@ export function useChat(settings: Settings) {
     await server.addMemoryFact(fact);
     commitFacts([...factsRef.current, fact]);
   });
-  // Enabled, connected servers expose tools to the model. Names must be
-  // unambiguous: a duplicate name cannot be routed to one server reliably.
-  const toolRegistry = () => {
-    const byName = new Map<string, string[]>();
-    const tools: { name: string; description: string; inputSchema: Record<string, unknown> }[] = [];
-    for (const s of settings.mcpServers.filter(s => s.enabled && s.status === 'connected'))
-      for (const t of s.tools) {
-        if (!byName.has(t.name)) tools.push({ name: t.name, description: t.description, inputSchema: t.inputSchema });
-        byName.set(t.name, [...(byName.get(t.name) ?? []), s.id]);
-      }
-    const resolveServer = (name: string) => {
-      const ids = byName.get(name);
-      if (!ids?.length) throw new Error(`Tool "${name}" is not available on any connected MCP server.`);
-      if (ids.length > 1) throw new Error(`Tool "${name}" is provided by multiple MCP servers (${ids.join(', ')}); remove the duplicate in Settings.`);
-      return ids[0];
-    };
-    return { tools, resolveServer };
-  };
-
   const MAX_TOOL_ROUNDS = 5;
 
   const sendMessage = async (content: string) => {
@@ -167,7 +143,16 @@ export function useChat(settings: Settings) {
         return true;
       });
       if (!saved) throw new Error('Failed to save your message');
-      const { tools, resolveServer } = toolRegistry();
+      const catalog = createToolCatalog(settings.mcpServers);
+      const { tools, resolveServer } = catalog;
+      // Old discovery results are persisted for audit/UI, but their schemas
+      // must not accumulate in future model contexts. Preserve call/result pairs.
+      const oldSearchIds = new Set(conv.messages.flatMap(m => m.toolCalls ?? [])
+        .filter(call => call.name === SEARCH_TOOL).map(call => call.id));
+      const oldSearchMessageIds = new Set(conv.messages.filter(m => oldSearchIds.has(m.toolResult?.toolCallId ?? '')).map(m => m.id));
+      const modelMessages = () => working.messages.map(m => oldSearchMessageIds.has(m.id)
+        ? { ...m, content: 'Previous-turn tool search omitted. Search again to discover current tools.',
+          toolResult: { ...m.toolResult!, content: 'Previous-turn tool search omitted. Search again to discover current tools.' } } : m);
       // Tool loop: the model may request tools several times; each completed
       // round (assistant tool_calls + every paired tool result) is persisted
       // before the next model query so a failure never leaves a transcript
@@ -175,7 +160,7 @@ export function useChat(settings: Settings) {
       let response: Awaited<ReturnType<typeof chatCompletion>> | undefined;
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         response = await chatCompletion(activeEndpoint, [
-          { id: 'system', role: 'system', content: buildSystemPrompt(), timestamp: Date.now() }, ...working.messages,
+          { id: 'system', role: 'system', content: buildSystemPrompt() + catalog.guidance, timestamp: Date.now() }, ...modelMessages(),
         ], tools.length ? tools : undefined, chunk => {
           setRetryNotice(''); setStreamContent(previous => previous + chunk);
         }, (delay, retry) => setRetryNotice(`Rate limited (429). Retrying in ${Math.ceil(delay / 1000)}s (${retry}/2)…`));
@@ -207,7 +192,7 @@ export function useChat(settings: Settings) {
           let result: { content: string; isError: boolean };
           try {
             result = transportFailure ? { content: 'Not executed because a previous tool call failed.', isError: true }
-              : await server.callMCPTool(call.serverId, call.name, call.arguments);
+              : await catalog.execute(call, server.callMCPTool);
           } catch (error) {
             transportFailure = errorText(error);
             result = { content: errorText(error), isError: true };

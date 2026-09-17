@@ -140,4 +140,33 @@ describe('useChat tool loop', () => {
     expect(toolCallBodies).toEqual([]);
     expect(result.current.activeConversation?.messages.map(m => m.role)).toEqual(['user']);
   });
+
+  it('searches a 1250-tool catalog then executes only the discovered tool without leaking the catalog', async () => {
+    const settings = settingsWithTools();
+    settings.mcpServers[0].tools.push(...Array.from({ length: 1249 }, (_, i) => ({
+      name: `unused_${i}`, description: 'UNRELATED_CATALOG_METADATA', serverId: 'srv-1', inputSchema: { type: 'object' },
+    })));
+    mockFetch({ content: 'page body' });
+    chatMock.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'search', name: 'easywebui_search_tools', arguments: { query: 'notion-fetch' }, serverId: '' }] })
+      .mockImplementationOnce(async (_config, messages, tools) => {
+        const found = JSON.parse(messages.find(m => m.toolResult?.toolCallId === 'search')!.content);
+        expect(found.tools).toHaveLength(1);
+        expect(tools).toHaveLength(2);
+        return { content: '', toolCalls: [{ id: 'exec', name: 'easywebui_execute_tool', arguments: { tool_id: found.tools[0].tool_id, arguments: { id: 'self' } }, serverId: '' }] };
+      }).mockResolvedValueOnce({ content: 'Page found' });
+    const { result } = renderHook(() => useChat(settings));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { await result.current.sendMessage('Fetch notion page'); });
+    expect(toolCallBodies).toEqual([{ serverId: 'srv-1', name: 'notion-fetch', arguments: { id: 'self' } }]);
+    expect(result.current.activeConversation?.messages.at(-1)?.content).toBe('Page found');
+    for (const [, messages, tools] of chatMock.mock.calls) {
+      expect(tools).toHaveLength(2);
+      expect(JSON.stringify({ messages, tools })).not.toContain('UNRELATED_CATALOG_METADATA');
+    }
+    // Keep persisted audit history, but omit old schema results on the next turn.
+    chatMock.mockResolvedValueOnce({ content: 'Next answer' });
+    await act(async () => { await result.current.sendMessage('Next question'); });
+    const nextMessages = chatMock.mock.calls[3][1];
+    expect(nextMessages.find(m => m.toolResult?.toolCallId === 'search')?.content).toContain('omitted');
+  });
 });
