@@ -36,6 +36,8 @@ describe('D1 migration configuration', () => {
     expect(workflow).toContain('D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}');
     expect(workflow).not.toContain('for file in drizzle/*.sql');
     expect(workflow).not.toContain('wrangler d1 execute');
+    expect(workflow).toContain('--prefix "$RUNNER_TEMP/wrangler" wrangler@4.133.0');
+    expect(workflow).toContain('echo "$RUNNER_TEMP/wrangler/bin" >> "$GITHUB_PATH"');
   });
 });
 

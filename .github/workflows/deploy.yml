@@ -79,7 +79,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Wrangler
-        run: npm install -g wrangler
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/wrangler" wrangler@4.133.0
+          echo "$RUNNER_TEMP/wrangler/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/wrangler/bin/wrangler" --version
 
       - name: Apply database migrations
         env:
