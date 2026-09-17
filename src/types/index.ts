@@ -115,6 +115,24 @@ export interface APIEndpoint {
   createdAt: number;
 }
 
+// Provider: owns the base URL + shared API key. Models reference a provider,
+// so several models of one provider never duplicate the key.
+export interface AIProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  createdAt: number;
+}
+
+export interface ProviderModel {
+  id: string;
+  providerId: string;
+  name: string; // model id sent to the API, e.g. "gpt-4o"
+  label?: string; // optional display name
+  createdAt: number;
+}
+
 // API Config (for backward compatibility)
 export interface APIConfig {
   baseUrl: string;
@@ -133,6 +151,9 @@ export interface OAuthClientConfig {
 export interface Settings {
   endpoints: APIEndpoint[];
   activeEndpointId: string | null;
+  providers?: AIProvider[];
+  models?: ProviderModel[];
+  activeModelId?: string | null;
   mcpServers: MCPServer[];
   memoryEnabled: boolean;
   autoMemory: boolean;

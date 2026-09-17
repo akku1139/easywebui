@@ -67,6 +67,7 @@ export async function chatCompletion(c: Context<{ Bindings: Env }>) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
+      ...providerHeaders(baseUrl),
     },
     body: JSON.stringify({ messages, model, stream }),
   });
@@ -108,6 +109,7 @@ Assistant responded: ${assistantResponse.slice(0, 1000)}`;
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      ...providerHeaders(env.OPENAI_BASE_URL),
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
@@ -146,3 +148,4 @@ Assistant responded: ${assistantResponse.slice(0, 1000)}`;
     }
   }
 }
+import { providerHeaders } from '../../utils/provider-headers';

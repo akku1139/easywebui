@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChat } from './useChat';
 import { Settings } from '../types';
 
@@ -24,103 +24,111 @@ describe('useChat', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    vi.clearAllMocks();
+    vi.mocked(fetch).mockReset();
+    vi.mocked(fetch).mockImplementation(async (url, init) => new Response(JSON.stringify(
+      String(url).includes('/chat/completions') ? { choices: [{ message: { content: 'Hi there!' } }] }
+        : init?.method ? { ok: true } : []
+    )));
   });
 
   describe('Conversation Management', () => {
-    it('should start with no conversations', () => {
+    it('should start with no conversations', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
       expect(result.current.conversations).toHaveLength(0);
       expect(result.current.activeConversation).toBeNull();
     });
 
-    it('should create a new conversation', () => {
+    it('should create a new conversation', async () => {
+      vi.mocked(fetch).mockImplementation(async (_url, init) => new Response(JSON.stringify(init?.method === 'POST' ? { ok: true } : [])));
       const { result } = renderHook(() => useChat(mockSettings));
-
-      act(() => {
-        result.current.createConversation();
-      });
-
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      await act(async () => { await result.current.createConversation(); });
       expect(result.current.conversations).toHaveLength(1);
-      expect(result.current.activeConversation).toBeTruthy();
       expect(result.current.activeConversation!.title).toBe('New Chat');
+      expect(vi.mocked(fetch).mock.calls.some(([url, init]) => url === '/api/conversations' && init?.method === 'POST')).toBe(true);
     });
 
-    it('should delete a conversation', () => {
+    it('should delete a conversation', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       const convId = result.current.activeConversation!.id;
 
-      act(() => {
-        result.current.deleteConversation(convId);
+      await act(async () => {
+        await result.current.deleteConversation(convId);
       });
 
       expect(result.current.conversations).toHaveLength(0);
       expect(result.current.activeConversation).toBeNull();
     });
 
-    it('should switch between conversations', () => {
+    it('should switch between conversations', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
       const firstConvId = result.current.activeConversation!.id;
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
       const secondConvId = result.current.activeConversation!.id;
 
       expect(result.current.activeConversationId).toBe(secondConvId);
 
-      act(() => {
+      await act(async () => {
         result.current.setActiveConversationId(firstConvId);
       });
 
       expect(result.current.activeConversationId).toBe(firstConvId);
     });
 
-    it('should toggle pin on a conversation', () => {
+    it('should toggle pin on a conversation', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       const convId = result.current.activeConversation!.id;
       expect(result.current.activeConversation!.pinned).toBeFalsy();
 
       // Pin the conversation
-      act(() => {
-        result.current.togglePin(convId);
+      await act(async () => {
+        await result.current.togglePin(convId);
       });
 
       expect(result.current.activeConversation!.pinned).toBe(true);
 
       // Unpin the conversation
-      act(() => {
-        result.current.togglePin(convId);
+      await act(async () => {
+        await result.current.togglePin(convId);
       });
 
       expect(result.current.activeConversation!.pinned).toBe(false);
     });
 
-    it('should persist pin state in localStorage', () => {
+    it('should persist pin state in localStorage', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       const convId = result.current.activeConversation!.id;
 
-      act(() => {
-        result.current.togglePin(convId);
+      await act(async () => {
+        await result.current.togglePin(convId);
       });
 
       const stored = localStorage.getItem('ai-chat-conversations');
@@ -160,41 +168,44 @@ describe('useChat', () => {
       theme: 'dark',
     };
 
-    it('should use active endpoint for new conversations', () => {
+    it('should use active endpoint for new conversations', async () => {
       const { result } = renderHook(() => useChat(multiEndpointSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       expect(result.current.activeConversation!.model).toBe('gpt-4o');
     });
 
-    it('should switch to different endpoint when activeEndpointId changes', () => {
+    it('should switch to different endpoint when activeEndpointId changes', async () => {
       const settingsWithClaude: Settings = {
         ...multiEndpointSettings,
         activeEndpointId: 'endpoint-2',
       };
 
       const { result } = renderHook(() => useChat(settingsWithClaude));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       expect(result.current.activeConversation!.model).toBe('claude-3-opus');
     });
 
-    it('should fallback to default endpoint when activeEndpointId is invalid', () => {
+    it('should fallback to default endpoint when activeEndpointId is invalid', async () => {
       const settingsWithInvalidActive: Settings = {
         ...multiEndpointSettings,
         activeEndpointId: 'non-existent',
       };
 
       const { result } = renderHook(() => useChat(settingsWithInvalidActive));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.createConversation();
+      await act(async () => {
+        await result.current.createConversation();
       });
 
       // Should fallback to the default endpoint (OpenAI)
@@ -203,11 +214,12 @@ describe('useChat', () => {
   });
 
   describe('Memory Management', () => {
-    it('should add user facts', () => {
+    it('should add user facts', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.addUserFact('User likes cats', 'preference');
+      await act(async () => {
+        await result.current.addUserFact('User likes cats', 'preference');
       });
 
       expect(result.current.userFacts).toHaveLength(1);
@@ -216,27 +228,29 @@ describe('useChat', () => {
       expect(result.current.userFacts[0].source).toBe('explicit');
     });
 
-    it('should remove user facts', () => {
+    it('should remove user facts', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.addUserFact('User likes cats', 'preference');
+      await act(async () => {
+        await result.current.addUserFact('User likes cats', 'preference');
       });
 
       const factId = result.current.userFacts[0].id;
 
-      act(() => {
-        result.current.removeUserFact(factId);
+      await act(async () => {
+        await result.current.removeUserFact(factId);
       });
 
       expect(result.current.userFacts).toHaveLength(0);
     });
 
-    it('should persist user facts in localStorage', () => {
+    it('should persist user facts in localStorage', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
-      act(() => {
-        result.current.addUserFact('User likes cats', 'preference');
+      await act(async () => {
+        await result.current.addUserFact('User likes cats', 'preference');
       });
 
       const stored = localStorage.getItem('ai-chat-memory');
@@ -264,6 +278,7 @@ describe('useChat', () => {
       };
 
       const { result } = renderHook(() => useChat(settingsWithoutApi));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
       await expect(async () => {
         await act(async () => {
@@ -274,14 +289,7 @@ describe('useChat', () => {
 
     it('should create conversation automatically when sending first message', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
-
-      // Mock API response (non-streaming)
-      vi.mocked(globalThis.fetch).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{ message: { content: 'Hi there!' } }]
-        }),
-      } as Response);
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
       await act(async () => {
         await result.current.sendMessage('Hello');
@@ -294,13 +302,14 @@ describe('useChat', () => {
   });
 
   describe('System Prompt Stability (Prefix Cache)', () => {
-    it('should maintain stable system prompt when memory does not change', () => {
+    it('should maintain stable system prompt when memory does not change', async () => {
       const { result, rerender } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
       // Add some facts
-      act(() => {
-        result.current.addUserFact('Fact 1', 'personal');
-        result.current.addUserFact('Fact 2', 'work');
+      await act(async () => {
+        await result.current.addUserFact('Fact 1', 'personal');
+        await result.current.addUserFact('Fact 2', 'work');
       });
 
       // The hook should maintain stable ordering
@@ -315,18 +324,19 @@ describe('useChat', () => {
       expect(facts1.map(f => f.id)).toEqual(facts2.map(f => f.id));
     });
 
-    it('should handle multiple facts with stable ordering', () => {
+    it('should handle multiple facts with stable ordering', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
 
       // Add facts in random order (each in separate act block)
-      act(() => {
-        result.current.addUserFact('Fact C', 'other');
+      await act(async () => {
+        await result.current.addUserFact('Fact C', 'other');
       });
-      act(() => {
-        result.current.addUserFact('Fact A', 'other');
+      await act(async () => {
+        await result.current.addUserFact('Fact A', 'other');
       });
-      act(() => {
-        result.current.addUserFact('Fact B', 'other');
+      await act(async () => {
+        await result.current.addUserFact('Fact B', 'other');
       });
 
       // All facts should be present
@@ -339,30 +349,33 @@ describe('useChat', () => {
   });
 
   describe('Custom System Prompt', () => {
-    it('should use custom system prompt when provided', () => {
+    it('should use custom system prompt when provided', async () => {
       const customSettings: Settings = {
         ...mockSettings,
         customSystemPrompt: 'You are a pirate assistant. Always speak like a pirate.',
       };
 
       const { result } = renderHook(() => useChat(customSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
       
       // The hook should accept the custom prompt
       expect(result.current).toBeTruthy();
     });
 
-    it('should use default system prompt when custom prompt is empty', () => {
+    it('should use default system prompt when custom prompt is empty', async () => {
       const settingsWithEmptyPrompt: Settings = {
         ...mockSettings,
         customSystemPrompt: '',
       };
 
       const { result } = renderHook(() => useChat(settingsWithEmptyPrompt));
+      await waitFor(() => expect(result.current.ready).toBe(true));
       expect(result.current).toBeTruthy();
     });
 
-    it('should use default system prompt when custom prompt is not provided', () => {
+    it('should use default system prompt when custom prompt is not provided', async () => {
       const { result } = renderHook(() => useChat(mockSettings));
+      await waitFor(() => expect(result.current.ready).toBe(true));
       expect(result.current).toBeTruthy();
     });
   });

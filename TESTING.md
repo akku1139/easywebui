@@ -236,3 +236,10 @@ npx vitest run --inspect-brk
 Markdownはteapotの`frontend/md.js`を参考にした軽量実装です。CommonMarkの完全実装やシンタックスハイライトは含みません。
 
 MCPの古いローカルIDは、同じURLのDBレコードが一意の場合にパネルを開くと補正されます。DBにないサーバーや同じURLが複数ある場合は自動推測せず、削除・再追加が必要です。
+## サーバー保存・プロバイダ分離の回帰テスト
+
+- `src/App.test.tsx`: 実Honoルートを経由して設定を復元し、ヘッダーでモデル選択→実際の送信モデル・会話本文のDB保存を検証。
+- `src/test/model-provider.test.tsx`: パネルからのモデル追加、キー共有、設定APIの保存／取得。
+- `src/hooks/useServerSettings.test.tsx`: 別ブラウザー相当の復元、設定保存失敗、旧endpointからの移行。
+- `src/test/data-sync.test.tsx`: メッセージ・メモリ・要約の保存、履歴復元、応答前に成功扱いしないこと、通信失敗の表示。
+- `src/test/mcp-persistence.test.tsx`: MCP追加→専用API保存→ローカルデータ消去後の復元。

@@ -315,3 +315,13 @@ npm run typecheck && npm run test:run && npm run build
 AGPL-3.0-or-later
 
 詳細は [LICENSE](./LICENSE) ファイルを参照してください。
+### プロバイダ・モデル設定とサーバー保存
+
+- Settingsの「Providers」でBase URLとAPI Keyを一度登録し、「Models」でそのプロバイダに属するモデルを追加します。キー更新は同じプロバイダの全モデルに反映されます。
+- 「Save Settings」はD1への保存成功後に画面へ反映します。ヘッダーのモデル選択もサーバーへ保存し、次の送信・メモリ抽出・要約で使用します。
+- 設定、会話本文、ピン、手動／自動メモリ、要約、MCPサーバーは起動時にサーバーから読み込みます。localStorageはキャッシュと旧データ移行用です。旧endpoint設定はURLとキーの組み合わせでプロバイダへ移行します。
+- 旧ブラウザー専用の会話・メモリ・MCP設定は初回に移行します。移行後は他端末の削除を復活させないようサーバーの一覧を優先します。通信失敗は画面に表示し、保存できたようには扱いません。
+- OpenRouterへのリクエストには`HTTP-Referer: https://github.com/akku1139/easywebui`と`X-Title: easywebui`を付与します。
+- この変更にはDrizzle生成の`0001_provider_model_settings.sql`が必要です。デプロイ時は既存のActionsが先に適用します。
+
+同期は操作時の保存と起動時の読み込みです。複数端末を同時に開いている場合のリアルタイム通知や競合マージは行いません。

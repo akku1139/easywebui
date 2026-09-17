@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsPanel from './SettingsPanel';
 import { Settings } from '../types';
 
 describe('SettingsPanel', () => {
+  beforeEach(() => { vi.mocked(fetch).mockResolvedValue(new Response('{"ok":true}')); });
   const mockSettings: Settings = {
     endpoints: [
       {
@@ -41,8 +42,8 @@ describe('SettingsPanel', () => {
   it('should show API endpoints section', () => {
     render(<SettingsPanel {...defaultProps} />);
     
-    expect(screen.getByText('API Endpoints')).toBeInTheDocument();
-    expect(screen.getByText('OpenAI')).toBeInTheDocument();
+    expect(screen.getByText('Providers')).toBeInTheDocument();
+    expect(screen.getAllByText(/OpenAI/)[0]).toBeInTheDocument();
   });
 
   it('should show memory settings section', () => {
@@ -74,7 +75,7 @@ describe('SettingsPanel', () => {
     const memoryCheckbox = screen.getByLabelText('Enable Memory');
     fireEvent.click(memoryCheckbox);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
   });
 
   it('should toggle auto memory', () => {
@@ -83,7 +84,7 @@ describe('SettingsPanel', () => {
     const autoMemoryCheckbox = screen.getByLabelText('Auto-detect Facts');
     fireEvent.click(autoMemoryCheckbox);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
   });
 
   it('should change theme to light', () => {
@@ -92,7 +93,7 @@ describe('SettingsPanel', () => {
     const lightButton = screen.getByText('Light');
     fireEvent.click(lightButton);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
   });
 
   it('should change theme to dark', () => {
@@ -101,7 +102,7 @@ describe('SettingsPanel', () => {
     const darkButton = screen.getByText('Dark');
     fireEvent.click(darkButton);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
   });
 
   it('should change theme to system', () => {
@@ -110,7 +111,7 @@ describe('SettingsPanel', () => {
     const systemButton = screen.getByText('System');
     fireEvent.click(systemButton);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
   });
 
   it('should update custom system prompt', () => {
@@ -122,13 +123,13 @@ describe('SettingsPanel', () => {
     expect(textarea).toHaveValue('You are a pirate');
   });
 
-  it('should save settings', () => {
+  it('should save settings', async () => {
     render(<SettingsPanel {...defaultProps} />);
     
     const saveButton = screen.getByText('Save Settings');
     fireEvent.click(saveButton);
     
-    expect(defaultProps.onUpdate).toHaveBeenCalled();
+    await waitFor(() => expect(defaultProps.onUpdate).toHaveBeenCalled());
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
@@ -144,17 +145,17 @@ describe('SettingsPanel', () => {
   it('should add new endpoint', () => {
     render(<SettingsPanel {...defaultProps} />);
     
-    const addButton = screen.getByText('+ Add Endpoint');
+    const addButton = screen.getByText('+ Add Provider');
     fireEvent.click(addButton);
     
-    expect(screen.getByText('Add Endpoint')).toBeInTheDocument();
+    expect(screen.getByText('Add Provider')).toBeInTheDocument();
   });
 
   it('should show endpoint details', () => {
     render(<SettingsPanel {...defaultProps} />);
     
     expect(screen.getByText('https://api.openai.com/v1')).toBeInTheDocument();
-    expect(screen.getByText('gpt-4')).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit model gpt-4')).toBeInTheDocument();
   });
 
   it('should render with light theme', () => {
@@ -167,5 +168,35 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel {...defaultProps} />);
     
     expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('rotates the provider key without duplicating credentials into models', async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    fireEvent.click(screen.getByLabelText('Edit provider OpenAI'));
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'rotated' } });
+    fireEvent.click(screen.getByText('Save Provider'));
+    fireEvent.click(screen.getByText('Save Settings'));
+    await waitFor(() => expect(defaultProps.onUpdate).toHaveBeenCalled());
+    const saved = defaultProps.onUpdate.mock.calls[0][0];
+    expect(saved.providers[0].apiKey).toBe('rotated');
+    expect(saved.models[0]).not.toHaveProperty('apiKey');
+    expect(saved.models[0].providerId).toBe(saved.providers[0].id);
+  });
+
+  it('keeps the panel open and does not publish changes when server save fails', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 500 }));
+    render(<SettingsPanel {...defaultProps} />);
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save settings');
+    expect(defaultProps.onUpdate).not.toHaveBeenCalled();
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+
+  it('deleting a provider also removes its models rather than resurrecting old endpoints', async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    fireEvent.click(screen.getByLabelText('Delete provider OpenAI'));
+    fireEvent.click(screen.getByText('Save Settings'));
+    await waitFor(() => expect(defaultProps.onUpdate).toHaveBeenCalled());
+    expect(defaultProps.onUpdate.mock.calls[0][0]).toMatchObject({ providers: [], models: [], endpoints: [], activeModelId: null });
   });
 });

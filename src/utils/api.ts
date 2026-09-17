@@ -1,4 +1,5 @@
 import { Message, ToolCall, APIConfig } from '../types';
+import { providerHeaders } from './provider-headers';
 
 function normalizeApiBaseUrl(baseUrl: string) {
   const normalized = baseUrl.trim().replace(/\/+$/, '');
@@ -45,6 +46,7 @@ export async function chatCompletion(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.apiKey}`,
+      ...providerHeaders(config.baseUrl),
     },
     body: JSON.stringify(body),
   });

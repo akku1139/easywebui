@@ -140,17 +140,16 @@ describe('MCPPanel', () => {
     expect(mockUpdateMCPServer).toHaveBeenLastCalledWith('server-1', { enabled: false });
   });
 
-  it('should reconcile legacy localStorage ids with canonical DB ids by URL', async () => {
+  it('should not duplicate hydration: server list loading is owned by App', () => {
+    // The panel no longer reconciles legacy ids itself — App fetches the
+    // canonical DB list on mount (single source of truth).
     mockFetchMCPServers.mockResolvedValue([
       { id: 'canonical-db-id', name: 'Test Server', url: 'http://localhost:3001' },
     ]);
     render(<MCPPanel {...defaultProps} />);
 
-    await waitFor(() =>
-      expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([
-        expect.objectContaining({ id: 'canonical-db-id', url: 'http://localhost:3001' }),
-      ])
-    );
+    expect(mockFetchMCPServers).not.toHaveBeenCalled();
+    expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
   });
 
   it('should not add server with empty URL', () => {
@@ -162,26 +161,48 @@ describe('MCPPanel', () => {
     expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
   });
 
-  it('should remove server', () => {
+  it('should remove server after the DELETE succeeds', async () => {
     render(<MCPPanel {...defaultProps} />);
-    
-    const removeButtons = screen.getAllByTitle('Remove server');
-    fireEvent.click(removeButtons[0]);
-    
-    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([]);
+
+    fireEvent.click(screen.getAllByTitle('Remove server')[0]);
+
+    await waitFor(() =>
+      expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([])
+    );
   });
 
-  it('should toggle server enabled state', () => {
+  it('should keep the server and show an error when DELETE fails', async () => {
+    mockDeleteMCPServer.mockRejectedValueOnce(new Error('boom'));
     render(<MCPPanel {...defaultProps} />);
-    
-    const toggleButton = screen.getByRole('switch');
-    fireEvent.click(toggleButton);
-    
-    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'server-1', enabled: false }),
-      ])
+
+    fireEvent.click(screen.getAllByTitle('Remove server')[0]);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
+  });
+
+  it('should toggle server enabled state after the PATCH succeeds', async () => {
+    render(<MCPPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    await waitFor(() =>
+      expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'server-1', enabled: false }),
+        ])
+      )
     );
+  });
+
+  it('should keep the enabled state and show an error when PATCH fails', async () => {
+    mockUpdateMCPServer.mockRejectedValueOnce(new Error('boom'));
+    render(<MCPPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
   });
 
   it('should connect to server', () => {

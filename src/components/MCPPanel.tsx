@@ -16,6 +16,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [oauthServerId, setOauthServerId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,9 +68,9 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       const response = await fetch('/api/mcp-oauth/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl: newUrl.trim() }),
+        body: JSON.stringify({ serverUrl: url }),
       });
-      
+
       if (response.ok) {
         const data = await response.json() as {
           authorizationEndpoint: string;
@@ -86,7 +87,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     } catch (error) {
       console.log('OAuth metadata not found, continuing without OAuth');
     }
-    
+
     // Save to D1 database first — the DB is the source of truth for the id.
     try {
       const saved = (await apiClient.addMCPServer({ ...server, id: undefined })) as { id?: string };
@@ -100,49 +101,32 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     }
   };
 
-  // Reconcile legacy local-storage server ids with the DB list. A local id
-  // is replaced by the canonical DB id ONLY when exactly one DB row shares
-  // its URL. Ambiguous (duplicate-URL) or unmatched servers keep their local
-  // id untouched — never overwrite a canonical id or guess between duplicates
-  // (avoids registering against stale/unknown ids → 404).
-  useEffect(() => {
-    let cancelled = false;
-    apiClient.fetchMCPServers()
-      .then((dbServers) => {
-        if (cancelled || !Array.isArray(dbServers)) return;
-        const urlCounts = new Map<string, number>();
-        for (const row of dbServers) {
-          urlCounts.set(row.url, (urlCounts.get(row.url) || 0) + 1);
-        }
-        const canonicalByUrl = new Map(
-          dbServers.map(s => [s.url, s.id] as const)
-        );
-        const reconciled = servers.map(s => {
-          // Preserve already-canonical and ambiguous/unmatched entries.
-          if (urlCounts.get(s.url) !== 1) return s;
-          const canonicalId = canonicalByUrl.get(s.url);
-          return canonicalId && canonicalId !== s.id
-            ? { ...s, id: canonicalId }
-            : s;
-        });
-        const hasChange = reconciled.some((s, i) => s.id !== servers[i].id);
-        if (hasChange) onUpdateServers(reconciled);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const removeServer = (id: string) => {
-    onUpdateServers(servers.filter(s => s.id !== id));
-    apiClient.deleteMCPServer(id).catch(() => {});
+  // Persisted mutations update the shared state only after the server accepts
+  // the change; on failure the panel surfaces a retryable error and keeps the
+  // current state (no optimistic writes that can silently diverge from D1).
+  const removeServer = async (id: string) => {
+    setActionError('');
+    try {
+      await apiClient.deleteMCPServer(id);
+      onUpdateServers(servers.filter(s => s.id !== id));
+    } catch (error) {
+      console.error('Failed to delete MCP server:', error);
+      setActionError('Failed to remove MCP server. Please try again.');
+    }
   };
 
-  const toggleServer = (id: string) => {
-    const updated = servers.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s);
-    onUpdateServers(updated);
-    const next = updated.find(s => s.id === id);
-    if (next) apiClient.updateMCPServer(id, { enabled: next.enabled }).catch(() => {});
+  const toggleServer = async (id: string) => {
+    const current = servers.find(s => s.id === id);
+    if (!current) return;
+    const enabled = !current.enabled;
+    setActionError('');
+    try {
+      await apiClient.updateMCPServer(id, { enabled });
+      onUpdateServers(servers.map(s => (s.id === id ? { ...s, enabled } : s)));
+    } catch (error) {
+      console.error('Failed to update MCP server:', error);
+      setActionError('Failed to update MCP server. Please try again.');
+    }
   };
 
   const startOAuthFlow = async (serverId: string) => {
@@ -161,9 +145,9 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         const registerResponse = await fetch('/api/mcp-oauth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             serverId,
-            registrationEndpoint: server.oauthRegistrationEndpoint 
+            registrationEndpoint: server.oauthRegistrationEndpoint
           }),
         });
 
@@ -288,8 +272,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
               onChange={e => setNewName(e.target.value)}
               placeholder="Server name (optional)"
               className={`w-40 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                isDark
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
               }`}
             />
@@ -298,8 +282,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
               onChange={e => setNewUrl(e.target.value)}
               placeholder="MCP Server URL (e.g., http://localhost:3001)"
               className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                isDark
+                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
               }`}
             />
@@ -315,6 +299,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
 
         {/* Server List */}
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {actionError && <p className="text-xs text-red-400" role="alert">{actionError}</p>}
           {servers.length === 0 ? (
             <div className={`text-center py-8 text-sm ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
               No MCP servers configured. Add a server URL to connect tools.
@@ -378,8 +363,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
                       title="Remove server"
                       onClick={() => removeServer(server.id)}
                       className={`p-1 transition ${
-                        isDark 
-                          ? 'text-gray-400 hover:text-red-400' 
+                        isDark
+                          ? 'text-gray-400 hover:text-red-400'
                           : 'text-gray-600 hover:text-red-600'
                       }`}
                     >

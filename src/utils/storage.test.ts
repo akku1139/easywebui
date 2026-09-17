@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { migrateLegacyEndpoints, resolveModel } from './storage';
 import {
   loadConversations, saveConversations,
   loadSettings, saveSettings,
@@ -101,10 +102,8 @@ describe('Storage Utils', () => {
       };
 
       saveSettings(settings);
-      const loaded = loadSettings();
-
-      expect(loaded.endpoints[0].baseUrl).toBe('https://api.example.com');
-      expect(loaded.endpoints[0].apiKey).toBe('test-key');
+      const loaded = migrateLegacyEndpoints(loadSettings());
+      expect(resolveModel(loaded)).toMatchObject({ baseUrl: 'https://api.example.com', apiKey: 'test-key' });
       expect(loaded.memoryEnabled).toBe(false);
       expect(loaded.theme).toBe('light');
     });
@@ -140,12 +139,11 @@ describe('Storage Utils', () => {
       };
 
       saveSettings(settings);
-      const loaded = loadSettings();
-
-      expect(loaded.endpoints).toHaveLength(2);
-      expect(loaded.endpoints[0].name).toBe('OpenAI');
-      expect(loaded.endpoints[1].name).toBe('Claude');
-      expect(loaded.activeEndpointId).toBe('ep-1');
+      const loaded = migrateLegacyEndpoints(loadSettings());
+      expect(loaded.models).toHaveLength(2);
+      expect(loaded.models![0].name).toBe('gpt-4o');
+      expect(loaded.models![1].name).toBe('claude-3-opus');
+      expect(resolveModel(loaded)?.model).toBe('gpt-4o');
     });
 
     it('should migrate from old apiConfig format', () => {
@@ -163,13 +161,10 @@ describe('Storage Utils', () => {
       };
 
       localStorage.setItem('ai-chat-settings', JSON.stringify(oldSettings));
-      const loaded = loadSettings();
-
-      expect(loaded.endpoints).toHaveLength(1);
-      expect(loaded.endpoints[0].baseUrl).toBe('https://api.openai.com');
-      expect(loaded.endpoints[0].apiKey).toBe('old-key');
-      expect(loaded.endpoints[0].model).toBe('gpt-4');
-      expect(loaded.endpoints[0].name).toBe('Default');
+      const loaded = migrateLegacyEndpoints(loadSettings());
+      expect(loaded.models).toHaveLength(1);
+      expect(resolveModel(loaded)).toMatchObject({ baseUrl: 'https://api.openai.com', apiKey: 'old-key', model: 'gpt-4' });
+      expect(loaded.models![0].label).toBe('Default');
     });
 
     it('should save and load custom system prompt', () => {

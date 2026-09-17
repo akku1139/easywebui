@@ -17,7 +17,7 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
       enabled: server.enabled,
       tools: JSON.parse(server.toolsJson || '[]'),
       status: server.status,
-      lastChecked: server.lastChecked,
+      lastChecked: server.lastChecked?.getTime() ?? null,
       oauthEnabled: server.oauthEnabled,
       oauthClientId: server.oauthClientId,
       oauthTokenEndpoint: server.oauthTokenEndpoint,
@@ -68,6 +68,11 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
     if (body.enabled !== undefined) updates.enabled = body.enabled;
     if (body.tools !== undefined) updates.toolsJson = JSON.stringify(body.tools);
     if (body.status !== undefined) updates.status = body.status;
+    if (body.lastChecked !== undefined) updates.lastChecked = body.lastChecked ? new Date(body.lastChecked) : null;
+    for (const field of ['oauthEnabled', 'oauthClientId', 'oauthClientSecret', 'oauthTokenEndpoint',
+      'oauthAuthEndpoint', 'oauthRegistrationEndpoint', 'oauthScopes'] as const) {
+      if (body[field] !== undefined) updates[field] = body[field];
+    }
     
     if (Object.keys(updates).length > 0) {
       await db.update(mcpServers).set(updates).where(eq(mcpServers.id, id));

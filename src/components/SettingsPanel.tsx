@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Settings, APIEndpoint } from '../types';
-import { saveSettings, generateId } from '../utils/storage';
+import { Settings, AIProvider, ProviderModel } from '../types';
+import { saveSettings, generateId, migrateLegacyEndpoints } from '../utils/storage';
+import * as apiClient from '../utils/api-client';
 
 interface Props {
   settings: Settings;
@@ -10,554 +11,110 @@ interface Props {
 }
 
 export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Props) {
+  const [local, setLocal] = useState(() => migrateLegacyEndpoints(settings));
+  const [providerDraft, setProviderDraft] = useState<AIProvider | null>(null);
+  const [modelDraft, setModelDraft] = useState<ProviderModel | null>(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const providers = local.providers ?? [];
+  const models = local.models ?? [];
   const isDark = theme === 'dark';
-  const [local, setLocal] = useState<Settings>({ ...settings });
-  const [editingEndpoint, setEditingEndpoint] = useState<APIEndpoint | null>(null);
-  const [showAddEndpoint, setShowAddEndpoint] = useState(false);
-
-  const updateImmediateSettings = (updates: Partial<Settings>) => {
-    const updated = { ...local, ...updates };
-    setLocal(updated);
-    onUpdate(updated);
+  const inputClass = `w-full rounded border p-2 ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`;
+  const buttonClass = 'rounded bg-blue-500 px-3 py-2 text-sm text-white disabled:opacity-50';
+  const handleSave = async () => {
+    if (providerDraft || modelDraft) { setError('Finish adding or editing the provider/model first.'); return; }
+    setSaving(true); setError('');
+    try {
+      await apiClient.saveSettings(local);
+      saveSettings(local); onUpdate(local); onClose();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to save settings');
+    } finally { setSaving(false); }
   };
-
-  const handleSave = () => {
-    onUpdate(local);
-    saveSettings(local);
-    onClose();
+  const saveProvider = () => {
+    if (!providerDraft) return;
+    try {
+      if (!['http:', 'https:'].includes(new URL(providerDraft.baseUrl).protocol)) throw new Error();
+    } catch { setError('Enter a valid HTTP or HTTPS base URL.'); return; }
+    if (!providerDraft.name.trim()) { setError('Enter a provider name.'); return; }
+    const next = { ...providerDraft, name: providerDraft.name.trim(), baseUrl: providerDraft.baseUrl.trim() };
+    setLocal({ ...local, providers: providers.some(p => p.id === next.id)
+      ? providers.map(p => p.id === next.id ? next : p) : [...providers, next] });
+    setProviderDraft(null); setError('');
   };
-
-  const handleCancel = () => {
-    onUpdate(settings);
-    onClose();
+  const saveModel = () => {
+    if (!modelDraft?.name.trim() || !providers.some(p => p.id === modelDraft.providerId)) {
+      setError('Choose a provider and enter a model ID.'); return;
+    }
+    const next = { ...modelDraft, name: modelDraft.name.trim() };
+    setLocal({ ...local, models: models.some(m => m.id === next.id)
+      ? models.map(m => m.id === next.id ? next : m) : [...models, next],
+      activeModelId: local.activeModelId ?? next.id });
+    setModelDraft(null); setError('');
   };
-
-  const addEndpoint = (endpoint: Omit<APIEndpoint, 'id' | 'createdAt'>) => {
-    const newEndpoint: APIEndpoint = {
-      ...endpoint,
-      id: generateId(),
-      createdAt: Date.now(),
-    };
-    const updatedEndpoints = [...local.endpoints, newEndpoint].map(endpoint => ({
-      ...endpoint,
-      isDefault: endpoint.id === newEndpoint.id ? newEndpoint.isDefault : newEndpoint.isDefault ? false : endpoint.isDefault,
-    }));
-    const updatedSettings = {
-      ...local,
-      endpoints: updatedEndpoints,
-      activeEndpointId: local.activeEndpointId || newEndpoint.id,
-    };
-    setLocal(updatedSettings);
-    setShowAddEndpoint(false);
+  const deleteModels = (remaining: ProviderModel[], nextProviders = providers) => {
+    setLocal({ ...local, providers: nextProviders, models: remaining,
+      activeModelId: remaining.some(m => m.id === local.activeModelId) ? local.activeModelId : remaining[0]?.id ?? null });
   };
-
-  const updateEndpoint = (id: string, updates: Partial<APIEndpoint>) => {
-    const updatedEndpoints = local.endpoints.map(e => {
-      if (e.id === id) return { ...e, ...updates };
-      return updates.isDefault ? { ...e, isDefault: false } : e;
-    });
-    setLocal({ ...local, endpoints: updatedEndpoints });
-    setEditingEndpoint(null);
-  };
-
-  const deleteEndpoint = (id: string) => {
-    const updatedEndpoints = local.endpoints.filter(e => e.id !== id);
-    const updatedSettings = {
-      ...local,
-      endpoints: updatedEndpoints,
-      activeEndpointId: local.activeEndpointId === id ? null : local.activeEndpointId,
-    };
-    setLocal(updatedSettings);
-  };
-
-  const setActiveEndpoint = (id: string) => {
-    setLocal({ ...local, activeEndpointId: id });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className={`w-full max-w-2xl max-h-[90vh] border rounded-2xl shadow-2xl flex flex-col ${
-        isDark 
-          ? 'bg-gray-800 border-gray-700' 
-          : 'bg-white border-gray-300'
-      }`}>
-        {/* Header */}
-        <div className={`flex items-center justify-between p-5 border-b ${
-          isDark ? 'border-gray-700' : 'border-gray-300'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <h2 className={`text-lg font-semibold ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Settings</h2>
+  return <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border p-5 ${isDark ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`}>
+      <h2 className="text-lg font-semibold mb-4">Settings</h2>
+      {error && <p role="alert" className="text-red-400 mb-3">{error}</p>}
+      <fieldset disabled={saving} className="space-y-6">
+        <section className="space-y-3">
+          <div className="flex justify-between items-center"><h3>Providers</h3>
+            <button className={buttonClass} onClick={() => setProviderDraft({ id: generateId(), name: '', baseUrl: '', apiKey: '', createdAt: Date.now() })}>+ Add Provider</button>
           </div>
-          <button onClick={onClose} className={`p-2 transition ${
-            isDark 
-              ? 'text-gray-400 hover:text-white' 
-              : 'text-gray-600 hover:text-gray-900'
-          }`}>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
-          {/* API Endpoints */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className={`text-sm font-medium flex items-center gap-2 ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                </svg>
-                API Endpoints
-              </h3>
-              <button
-                onClick={() => setShowAddEndpoint(true)}
-                className="px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-              >
-                + Add Endpoint
-              </button>
-            </div>
-
-            {local.endpoints.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 text-sm">
-                No endpoints configured. Add an API endpoint to get started.
+          <p className="text-xs opacity-70">A provider owns its base URL and API key. All its models share those credentials.</p>
+          {providers.map(provider => <div key={provider.id} className="border border-gray-500 rounded p-3">
+            <div className="flex justify-between gap-2"><strong>{provider.name}</strong>
+              <div className="flex gap-2">
+                <button aria-label={`Edit provider ${provider.name}`} onClick={() => setProviderDraft({ ...provider })}>Edit</button>
+                <button aria-label={`Delete provider ${provider.name}`} onClick={() => deleteModels(models.filter(m => m.providerId !== provider.id), providers.filter(p => p.id !== provider.id))}>Delete</button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {local.endpoints.map(endpoint => (
-                  <div
-                    key={endpoint.id}
-                    className={`p-3 rounded-lg border transition ${
-                      local.activeEndpointId === endpoint.id
-                        ? 'bg-blue-500/10 border-blue-500/30'
-                        : isDark
-                          ? 'bg-gray-700/50 border-gray-600'
-                          : 'bg-gray-100 border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${
-                          endpoint.baseUrl && endpoint.apiKey ? 'bg-green-400' : 'bg-red-400'
-                        }`} />
-                        <span className={`text-sm font-medium ${
-                          isDark ? 'text-white' : 'text-gray-900'
-                        }`}>{endpoint.name}</span>
-                        {local.activeEndpointId === endpoint.id && (
-                          <span className={`text-xs px-2 py-0.5 rounded ${
-                            isDark 
-                              ? 'bg-blue-500/20 text-blue-300' 
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>Active</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {local.activeEndpointId !== endpoint.id && (
-                          <button
-                            onClick={() => setActiveEndpoint(endpoint.id)}
-                            className={`px-2 py-1 text-xs rounded transition ${
-                              isDark 
-                                ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                          >
-                            Activate
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEditingEndpoint(endpoint)}
-                          className={`p-1 transition ${
-                            isDark 
-                              ? 'text-gray-400 hover:text-white' 
-                              : 'text-gray-600 hover:text-gray-900'
-                          }`}
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => deleteEndpoint(endpoint.id)}
-                          className={`p-1 transition ${
-                            isDark 
-                              ? 'text-gray-400 hover:text-red-400' 
-                              : 'text-gray-600 hover:text-red-600'
-                          }`}
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div className={`text-xs space-y-1 ${
-                      isDark ? 'text-gray-400' : 'text-gray-600'
-                    }`}>
-                      <div><span>URL:</span> <span>{endpoint.baseUrl || '(not set)'}</span></div>
-                      <div><span>Model:</span> <span>{endpoint.model}</span></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Memory Settings */}
-          <div className="space-y-3">
-            <h3 className={`text-sm font-medium flex items-center gap-2 ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>
-              <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-              Memory Settings
-            </h3>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                aria-label="Enable Memory"
-                checked={local.memoryEnabled}
-                onChange={e => updateImmediateSettings({ memoryEnabled: e.target.checked })}
-                className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
-                  isDark 
-                    ? 'bg-gray-700 border-gray-600' 
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-              <div>
-                <span className={`text-sm ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>Enable Memory</span>
-                <p className={`text-xs ${
-                  isDark ? 'text-gray-400' : 'text-gray-600'
-                }`}>Inject user facts and conversation summaries into context</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                aria-label="Auto-detect Facts"
-                checked={local.autoMemory}
-                onChange={e => updateImmediateSettings({ autoMemory: e.target.checked })}
-                className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
-                  isDark 
-                    ? 'bg-gray-700 border-gray-600' 
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-              <div>
-                <span className={`text-sm ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>Auto-detect Facts</span>
-                <p className={`text-xs ${
-                  isDark ? 'text-gray-400' : 'text-gray-600'
-                }`}>Automatically extract and store important facts from conversations</p>
-              </div>
-            </label>
-          </div>
-
-          {/* Custom System Prompt */}
-          <div className="space-y-3">
-            <h3 className={`text-sm font-medium flex items-center gap-2 ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>
-              <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Custom System Prompt
-            </h3>
-            <div>
-              <textarea
-                value={local.customSystemPrompt || ''}
-                onChange={e => setLocal({ ...local, customSystemPrompt: e.target.value })}
-                placeholder="You are a helpful AI assistant. (Leave empty to use default)"
-                rows={6}
-                className={`w-full px-3 py-2 border rounded-lg text-sm resize-none font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 ${
-                  isDark 
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                }`}
-              />
-              <p className={`text-xs mt-1 ${
-                isDark ? 'text-gray-400' : 'text-gray-600'
-              }`}>
-                Customize the AI's behavior. This replaces the default system prompt. Memory and tools are still appended.
-              </p>
             </div>
+            <p className="text-xs opacity-70">{provider.baseUrl}</p>
+          </div>)}
+          {providerDraft && <div className="space-y-2 border border-blue-500 rounded p-3">
+            <h4>{providers.some(p => p.id === providerDraft.id) ? 'Edit Provider' : 'Add Provider'}</h4>
+            <label className="block">Provider name<input aria-label="Provider name" className={inputClass} value={providerDraft.name} onChange={e => setProviderDraft({ ...providerDraft, name: e.target.value })} /></label>
+            <label className="block">Base URL (OpenAI Compatible)<input aria-label="Base URL" className={inputClass} value={providerDraft.baseUrl} onChange={e => setProviderDraft({ ...providerDraft, baseUrl: e.target.value })} placeholder="https://openrouter.ai/api/v1" /></label>
+            <label className="block">API Key<input aria-label="API Key" className={inputClass} type="password" value={providerDraft.apiKey} onChange={e => setProviderDraft({ ...providerDraft, apiKey: e.target.value })} /></label>
+            <button className={buttonClass} onClick={saveProvider}>Save Provider</button>
+            <button className="ml-3" onClick={() => setProviderDraft(null)}>Discard Provider</button>
+          </div>}
+        </section>
+        <section className="space-y-3">
+          <div className="flex justify-between items-center"><h3>Models</h3>
+            <button className={buttonClass} disabled={!providers.length} onClick={() => setModelDraft({ id: generateId(), providerId: providers[0].id, name: '', createdAt: Date.now() })}>+ Add Model</button>
           </div>
-
-          {/* Theme */}
-          <div className="space-y-3">
-            <h3 className={`text-sm font-medium flex items-center gap-2 ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>
-              <svg className="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-              Theme
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => updateImmediateSettings({ theme: 'light' })}
-                className={`px-4 py-3 rounded-lg border-2 transition ${
-                  local.theme === 'light'
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : isDark
-                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
-                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Light</span>
-                </div>
-              </button>
-              <button
-                onClick={() => updateImmediateSettings({ theme: 'dark' })}
-                className={`px-4 py-3 rounded-lg border-2 transition ${
-                  local.theme === 'dark'
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : isDark
-                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
-                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
-                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Dark</span>
-                </div>
-              </button>
-              <button
-                onClick={() => updateImmediateSettings({ theme: 'system' })}
-                className={`px-4 py-3 rounded-lg border-2 transition ${
-                  local.theme === 'system'
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : isDark
-                      ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
-                      : 'border-gray-300 bg-gray-100 hover:border-gray-400'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <svg className={`w-5 h-5 ${isDark ? 'text-white' : 'text-gray-900'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>System</span>
-                </div>
-              </button>
+          {!providers.length && <p>Add a provider before adding models.</p>}
+          {models.map(model => <div key={model.id} className="border border-gray-500 rounded p-3 flex justify-between gap-2">
+            <span>{model.label || model.name} <small className="opacity-70">({providers.find(p => p.id === model.providerId)?.name})</small></span>
+            <div className="flex gap-2">
+              {local.activeModelId === model.id ? <span>Active</span> : <button aria-label={`Activate ${model.name}`} onClick={() => setLocal({ ...local, activeModelId: model.id })}>Activate</button>}
+              <button aria-label={`Edit model ${model.name}`} onClick={() => setModelDraft({ ...model })}>Edit</button>
+              <button aria-label={`Delete model ${model.name}`} onClick={() => deleteModels(models.filter(m => m.id !== model.id))}>Delete</button>
             </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className={`p-5 border-t flex justify-end gap-3 ${
-          isDark ? 'border-gray-700' : 'border-gray-300'
-        }`}>
-          <button
-            onClick={handleCancel}
-            className={`px-4 py-2 text-sm transition ${
-              isDark 
-                ? 'text-gray-400 hover:text-white' 
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-6 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition"
-          >
-            Save Settings
-          </button>
-        </div>
-      </div>
-
-      {/* Add/Edit Endpoint Modal */}
-      {(showAddEndpoint || editingEndpoint) && (
-        <EndpointModal
-          endpoint={editingEndpoint}
-          theme={theme}
-          onSave={(data) => {
-            if (editingEndpoint) {
-              updateEndpoint(editingEndpoint.id, data);
-            } else {
-              addEndpoint(data);
-            }
-          }}
-          onClose={() => {
-            setShowAddEndpoint(false);
-            setEditingEndpoint(null);
-          }}
-        />
-      )}
+          </div>)}
+          {modelDraft && <div className="space-y-2 border border-blue-500 rounded p-3">
+            <label className="block">Provider<select aria-label="Provider" className={inputClass} value={modelDraft.providerId} onChange={e => setModelDraft({ ...modelDraft, providerId: e.target.value })}>
+              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></label>
+            <label className="block">Model ID<input aria-label="Model ID" className={inputClass} value={modelDraft.name} onChange={e => setModelDraft({ ...modelDraft, name: e.target.value })} placeholder="openai/gpt-4o" /></label>
+            <label className="block">Display name (optional)<input aria-label="Model display name" className={inputClass} value={modelDraft.label ?? ''} onChange={e => setModelDraft({ ...modelDraft, label: e.target.value })} /></label>
+            <button className={buttonClass} onClick={saveModel}>{models.some(m => m.id === modelDraft.id) ? 'Update Model' : 'Add'}</button>
+            <button className="ml-3" onClick={() => setModelDraft(null)}>Discard Model</button>
+          </div>}
+        </section>
+        <section className="space-y-3"><h3>Memory Settings</h3>
+          <label className="block"><input aria-label="Enable Memory" type="checkbox" checked={local.memoryEnabled} onChange={e => setLocal({ ...local, memoryEnabled: e.target.checked })} /> Enable Memory</label>
+          <label className="block"><input aria-label="Auto-detect Facts" type="checkbox" checked={local.autoMemory} onChange={e => setLocal({ ...local, autoMemory: e.target.checked })} /> Auto-detect Facts</label>
+        </section>
+        <section><h3>Custom System Prompt</h3><textarea className={inputClass} value={local.customSystemPrompt || ''} onChange={e => setLocal({ ...local, customSystemPrompt: e.target.value })} placeholder="You are a helpful AI assistant. (Leave empty to use default)" rows={5} /></section>
+        <section><h3>Theme</h3><div className="flex gap-3">{(['light', 'dark', 'system'] as const).map(value => <button key={value} className={local.theme === value ? buttonClass : 'p-2'} onClick={() => setLocal({ ...local, theme: value })}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div></section>
+        <div className="flex justify-end gap-3"><button onClick={onClose}>Cancel</button><button className={buttonClass} onClick={() => void handleSave()}>{saving ? 'Saving…' : 'Save Settings'}</button></div>
+      </fieldset>
     </div>
-  );
-}
-
-// Endpoint Modal Component
-interface EndpointModalProps {
-  endpoint: APIEndpoint | null;
-  theme: 'light' | 'dark';
-  onSave: (data: Omit<APIEndpoint, 'id' | 'createdAt'>) => void;
-  onClose: () => void;
-}
-
-function EndpointModal({ endpoint, theme, onSave, onClose }: EndpointModalProps) {
-  const isDark = theme === 'dark';
-  const [name, setName] = useState(endpoint?.name || '');
-  const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl || '');
-  const [apiKey, setApiKey] = useState(endpoint?.apiKey || '');
-  const [model, setModel] = useState(endpoint?.model || 'gpt-4o');
-  const [isDefault, setIsDefault] = useState(endpoint?.isDefault || false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave({
-      name: name || 'Unnamed Endpoint',
-      baseUrl,
-      apiKey,
-      model,
-      enabled: true,
-      isDefault,
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className={`w-full max-w-lg border rounded-2xl shadow-2xl ${
-        isDark 
-          ? 'bg-gray-800 border-gray-700' 
-          : 'bg-white border-gray-300'
-      }`}>
-        <div className={`p-5 border-b ${
-          isDark ? 'border-gray-700' : 'border-gray-300'
-        }`}>
-          <h3 className={`text-lg font-semibold ${
-            isDark ? 'text-white' : 'text-gray-900'
-          }`}>
-            {endpoint ? 'Edit Endpoint' : 'Add Endpoint'}
-          </h3>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div>
-            <label className={`block text-xs mb-1 ${
-              isDark ? 'text-gray-400' : 'text-gray-600'
-            }`}>Name</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g., OpenAI, Claude, Local LLM"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              required
-            />
-          </div>
-          <div>
-            <label className={`block text-xs mb-1 ${
-              isDark ? 'text-gray-400' : 'text-gray-600'
-            }`}>Base URL (OpenAI Compatible)</label>
-            <input
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              required
-            />
-            <p className={`text-xs mt-1 ${
-              isDark ? 'text-gray-500' : 'text-gray-600'
-            }`}>
-              Supports: OpenAI, Cloudflare Workers AI, Azure OpenAI, Ollama, etc.
-            </p>
-          </div>
-          <div>
-            <label className={`block text-xs mb-1 ${
-              isDark ? 'text-gray-400' : 'text-gray-600'
-            }`}>API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              required
-            />
-          </div>
-          <div>
-            <label className={`block text-xs mb-1 ${
-              isDark ? 'text-gray-400' : 'text-gray-600'
-            }`}>Model</label>
-            <input
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              placeholder="gpt-4o"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              required
-            />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isDefault}
-              onChange={e => setIsDefault(e.target.checked)}
-              className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600' 
-                  : 'bg-white border-gray-300'
-              }`}
-            />
-            <span className={`text-sm ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Set as default endpoint</span>
-          </label>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`px-4 py-2 text-sm transition ${
-                isDark 
-                  ? 'text-gray-400 hover:text-white' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition"
-            >
-              {endpoint ? 'Update' : 'Add'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
+  </div>;
 }

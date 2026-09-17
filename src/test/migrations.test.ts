@@ -68,7 +68,8 @@ it('applies the checked-in migrations once and preserves data on rerun', async (
     await apply();
     sqlite.exec("INSERT INTO mcp_servers (id, name, url, created_at) VALUES ('kept', 'MCP', 'https://example.com', 1)");
     const before = sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-    expect(before).toHaveLength(1);
+    const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));
+    expect(before).toHaveLength(journal.entries.length);
     await apply();
     expect(sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toEqual(before);
     expect(sqlite.prepare("SELECT name FROM mcp_servers WHERE id = 'kept'").get()?.name).toBe('MCP');

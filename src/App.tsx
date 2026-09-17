@@ -3,7 +3,8 @@ import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useChat } from './hooks/useChat';
 import { useTheme } from './hooks/useTheme';
-import { loadSettings, saveSettings } from './utils/storage';
+import { resolveModel } from './utils/storage';
+import { useServerSettings } from './hooks/useServerSettings';
 import { Settings } from './types';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
@@ -28,7 +29,8 @@ function ChatApp() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { auth } = useAuth();
-  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const serverSettings = useServerSettings();
+  const { settings } = serverSettings;
   const [activePanel, setActivePanel] = useState<Panel>('none');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatError, setChatError] = useState('');
@@ -55,44 +57,27 @@ function ChatApp() {
 
   const chat = useChat(settings);
 
-  // Sync URL with active conversation
+  // Resolve a deep link only after the server's conversations have loaded.
   useEffect(() => {
-    if (chat.activeConversationId && chat.activeConversationId !== id) {
-      navigate(`/c/${chat.activeConversationId}`, { replace: true });
-    } else if (!chat.activeConversationId && id) {
-      navigate('/', { replace: true });
-    }
-  }, [chat.activeConversationId, id, navigate]);
-
-  // Load conversation from URL
-  useEffect(() => {
-    if (id && id !== chat.activeConversationId) {
-      const conversation = chat.conversations.find(c => c.id === id);
-      if (conversation) {
-        chat.setActiveConversationId(id);
-      }
-    }
-  }, [id]);
+    if (!chat.ready) return;
+    if (id && chat.conversations.some(c => c.id === id)) chat.setActiveConversationId(id);
+  }, [id, chat.ready, chat.conversations]);
 
   const handleSend = async (content: string) => {
     setChatError('');
     try {
+      if (!serverSettings.ready) throw new Error('Server settings are still loading');
       await chat.sendMessage(content);
     } catch (err) {
       setChatError(err instanceof Error ? err.message : 'Failed to send message');
     }
   };
 
-  const handleUpdateSettings = (newSettings: Settings) => {
-    setSettings(newSettings);
-    saveSettings(newSettings);
-  };
+  const handleUpdateSettings = (newSettings: Settings) => serverSettings.update(newSettings);
+  const handleUpdateMCPServers = (servers: Settings['mcpServers']) =>
+    serverSettings.update({ ...settings, mcpServers: servers });
+  const activeModel = resolveModel(settings);
 
-  const handleUpdateMCPServers = (servers: Settings['mcpServers']) => {
-    const newSettings = { ...settings, mcpServers: servers };
-    setSettings(newSettings);
-    saveSettings(newSettings);
-  };
 
   return (
     <div className={`h-screen flex overflow-hidden ${
@@ -109,9 +94,10 @@ function ChatApp() {
         onClose={() => setSidebarOpen(false)}
         onSelect={(conversationId) => {
           chat.setActiveConversationId(conversationId);
+          navigate(`/c/${conversationId}`);
           setSidebarOpen(false);
         }}
-        onNew={chat.createConversation}
+        onNew={() => { void chat.createConversation().then(conversation => { if (conversation) navigate(`/c/${conversation.id}`); }); }}
         onDelete={chat.deleteConversation}
         onTogglePin={chat.togglePin}
         onOpenSettings={() => setActivePanel('settings')}
@@ -181,27 +167,18 @@ function ChatApp() {
             )}
           </div>
           <div className="min-w-0 flex items-center justify-end gap-2">
-            {(() => {
-              const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId && e.enabled)
-                || settings.endpoints.find(e => e.isDefault && e.enabled)
-                || settings.endpoints.find(e => e.enabled);
-              return (
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
-                  resolvedTheme === 'dark' 
-                    ? 'bg-gray-800 border-gray-700' 
-                    : 'bg-gray-100 border-gray-300'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full ${
-                    activeEndpoint?.baseUrl ? 'bg-green-400' : 'bg-red-400'
-                  }`} />
-                  <span className={`max-w-[12rem] truncate text-xs ${
-                    resolvedTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'
-                  }`}>
-                    {activeEndpoint ? `${activeEndpoint.name} (${activeEndpoint.model})` : 'No endpoint'}
-                  </span>
-                </div>
-              );
-            })()}
+            <label className="text-xs">
+              <span className="sr-only">Active model</span>
+              <select aria-label="Active model" value={activeModel?.id ?? ''}
+                disabled={!serverSettings.ready || serverSettings.saving || chat.isLoading}
+                onChange={e => void serverSettings.selectModel(e.target.value)}
+                className="max-w-[18rem] rounded border border-gray-500 bg-transparent p-1">
+                {!settings.models?.length && <option value="">No model configured</option>}
+                {settings.models?.map(model => <option key={model.id} value={model.id}>
+                  {settings.providers?.find(p => p.id === model.providerId)?.name} — {model.label || model.name}
+                </option>)}
+              </select>
+            </label>
             {settings.memoryEnabled && (
               <div className="hidden items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 sm:flex">
                 <span className="text-xs text-amber-400">Memory on</span>
@@ -217,13 +194,15 @@ function ChatApp() {
           </div>
         </header>
 
+        {serverSettings.syncError && <button onClick={serverSettings.retry}>Retry loading settings</button>}
+        {chat.syncError && !chat.ready && <button onClick={chat.retry}>Retry loading conversations</button>}
         {/* Chat */}
         <ChatView
           messages={chat.activeConversation?.messages || []}
-          isLoading={chat.isLoading}
+          isLoading={chat.isLoading || !serverSettings.ready || !chat.ready}
           streamContent={chat.streamContent}
           onSend={handleSend}
-          error={chatError}
+          error={chatError || serverSettings.syncError || chat.syncError || ''}
           theme={resolvedTheme}
         />
       </main>
@@ -239,7 +218,7 @@ function ChatApp() {
           theme={resolvedTheme}
         />
       )}
-      {activePanel === 'mcp' && (
+      {activePanel === 'mcp' && serverSettings.ready && (
         <MCPPanel
           servers={settings.mcpServers}
           onUpdateServers={handleUpdateMCPServers}
@@ -249,7 +228,7 @@ function ChatApp() {
           onUpdateSettings={handleUpdateSettings}
         />
       )}
-      {activePanel === 'settings' && (
+      {activePanel === 'settings' && serverSettings.ready && (
         <SettingsPanel
           settings={settings}
           onUpdate={handleUpdateSettings}

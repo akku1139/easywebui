@@ -100,6 +100,11 @@ export const settings = sqliteTable('settings', {
   id: text('id').primaryKey(),
   endpointsJson: text('endpoints_json').notNull().default('[]'),
   activeEndpointId: text('active_endpoint_id'),
+  // Provider/model separation: providers own the shared API key, models
+  // reference their provider. Serialized as JSON blobs.
+  providersJson: text('providers_json').notNull().default('[]'),
+  modelsJson: text('models_json').notNull().default('[]'),
+  activeModelId: text('active_model_id'),
   memoryEnabled: integer('memory_enabled', { mode: 'boolean' }).notNull().default(true),
   autoMemory: integer('auto_memory', { mode: 'boolean' }).notNull().default(true),
   theme: text('theme').notNull().default('system'),
