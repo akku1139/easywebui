@@ -217,7 +217,7 @@ export function useChat(settings: Settings) {
       }
       if (!response) throw new Error(`Tool execution did not finish within ${MAX_TOOL_ROUNDS} rounds. Try a simpler request or disable some tools.`);
       const assistant: Message = { id: generateId(), role: 'assistant', content: response.content,
-        timestamp: Date.now(), model: activeEndpoint.model, toolCalls: response.toolCalls };
+        timestamp: Date.now(), model: activeEndpoint.model, toolCalls: response.toolCalls, usage: response.usage };
       const complete = { ...working, messages: [...working.messages, assistant], updatedAt: Date.now() };
       const finalStored = await persist(async () => {
         await server.saveConversation(complete);

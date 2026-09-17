@@ -9,7 +9,7 @@ export async function chatCompletion(
   tools?: { name: string; description: string; inputSchema: Record<string, unknown> }[],
   onStream?: (chunk: string) => void,
   onRetry?: (delayMs: number, retry: number) => void,
-): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: Message['usage'] }> {
   if (!config.model?.trim() || !config.baseUrl?.trim()) throw new Error('Configure a provider and model in Settings.');
   const formattedMessages = messages.map(m => ({
     role: m.role,
@@ -95,7 +95,7 @@ export async function chatCompletion(
 async function handleStreamResponse(
   response: Response,
   onStream: (chunk: string) => void
-): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+): Promise<{ content: string; toolCalls?: ToolCall[]; usage?: Message['usage'] }> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
 
@@ -103,6 +103,10 @@ async function handleStreamResponse(
   let content = '';
   let buffer = '';
   const calls = new Map<number, { id: string; name: string; args: string }>();
+  // OpenRouter and other OpenAI-compatible providers report usage in a final
+  // chunk (or include it on the finish_reason chunk when stream_options.allow
+  // is enabled upstream); capture whatever arrives.
+  let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
   const finish = () => {
     const toolCalls = [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => {
       if (!call.id || !call.name) throw new Error('Incomplete streamed tool call');
@@ -114,7 +118,7 @@ async function handleStreamResponse(
       return { id: call.id, name: call.name, arguments: args, serverId: '' };
     });
     if (new Set(toolCalls.map(call => call.id)).size !== toolCalls.length) throw new Error('Duplicate tool call id');
-    return { content, toolCalls: toolCalls.length ? toolCalls : undefined };
+    return { content, toolCalls: toolCalls.length ? toolCalls : undefined, usage };
   };
   const consume = (line: string) => {
     if (!line.startsWith('data:')) return false;
@@ -124,6 +128,12 @@ async function handleStreamResponse(
     let parsed;
     try { parsed = JSON.parse(data); } catch { throw new Error('Invalid completion stream JSON'); }
     if (parsed.error) throw new Error(parsed.error.message || 'Completion stream failed');
+    const streamUsage = parsed.usage;
+    if (streamUsage && typeof streamUsage.prompt_tokens === 'number' && typeof streamUsage.completion_tokens === 'number') {
+      usage = { prompt_tokens: streamUsage.prompt_tokens, completion_tokens: streamUsage.completion_tokens,
+        total_tokens: typeof streamUsage.total_tokens === 'number' ? streamUsage.total_tokens
+          : streamUsage.prompt_tokens + streamUsage.completion_tokens };
+    }
     const choice = parsed.choices?.find((c: { index?: number }) => c.index === undefined || c.index === 0);
     const delta = choice?.delta;
     if (typeof delta?.content === 'string') {

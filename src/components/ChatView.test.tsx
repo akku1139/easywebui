@@ -35,6 +35,16 @@ describe('ChatView', () => {
     expect(screen.getByText('Hi there!')).toBeInTheDocument();
   });
 
+  it('shows per-message token usage when the provider reports it', () => {
+    render(<ChatView {...defaultProps} messages={[...mockMessages,
+      { id: 'u3', role: 'assistant', content: 'Measured answer', timestamp: Date.now(),
+        usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 } },
+      { id: 'u4', role: 'assistant', content: 'No usage reported', timestamp: Date.now() }]} />);
+    expect(screen.getByTitle('12 prompt + 34 completion')).toHaveTextContent('46 tokens');
+    expect(screen.queryByText('No usage reported')).toBeInTheDocument();
+    expect(screen.getAllByText(/tokens$/)).toHaveLength(1);
+  });
+
   it('should show empty state when no messages', () => {
     render(<ChatView {...defaultProps} messages={[]} />);
     

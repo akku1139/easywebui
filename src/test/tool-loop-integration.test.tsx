@@ -46,7 +46,8 @@ it.each([false, true])('continues after 429 without repeating MCP and saves fina
         expect.objectContaining({ role: 'assistant', tool_calls: [{ id: 'call-1', type: 'function', function: lazy ? expect.objectContaining({ name: 'easywebui_execute_tool' }) : { name: 'notion-fetch', arguments: '{"id":"self"}' } }] }),
         expect.objectContaining({ role: 'tool', tool_call_id: 'call-1', content: 'Notion page body' }),
       ]);
-      return new Response(sse({ choices: [{ delta: { content: 'Here is your Notion page.' }, finish_reason: 'stop' }] }) + 'data: [DONE]\n\n');
+      return new Response(sse({ choices: [{ delta: { content: 'Here is your Notion page.' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 11, completion_tokens: 7 } }) + 'data: [DONE]\n\n');
     }
     if (String(url) === 'https://mcp.example.com/mcp') {
       const rpc = JSON.parse(String(init?.body));
@@ -73,6 +74,7 @@ it.each([false, true])('continues after 429 without repeating MCP and saves fina
   const messages = JSON.parse(env.AI_CHAT_DB._getData('conversations')[0].messages_json);
   expect(messages.map((m: any) => m.role)).toEqual(lazy ? ['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'] : ['user', 'assistant', 'tool', 'assistant']);
   expect(messages[lazy ? 4 : 2].toolResult).toMatchObject({ toolCallId: 'call-1', content: 'Notion page body' });
+  expect(messages.at(-1).usage).toEqual({ prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 });
   expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/call']);
   expect(completions).toHaveLength(lazy ? 3 : 2);
   expect(limited).toBe(true);

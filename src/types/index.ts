@@ -7,6 +7,8 @@ export interface Message {
   toolCalls?: ToolCall[];
   toolResult?: ToolResult;
   model?: string;
+  /** Reported by the provider for this assistant message (OpenRouter usage chunk). */
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 // MCP Types

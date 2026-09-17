@@ -45,7 +45,9 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    // min-h-0: without it this h-full child overflows `main` and pushes the
+    // 56px header out of view once a conversation renders.
+    <div className="flex-1 flex flex-col h-full min-h-0">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 && !streamContent && (
@@ -227,10 +229,11 @@ function MessageBubble({ message, isDark }: { message: Message; isDark: boolean 
             ))}
           </div>
         )}
-        <span className={`text-xs mt-1 px-1 ${
-          isDark ? 'text-gray-500' : 'text-gray-400'
-        }`}>
-          {new Date(message.timestamp).toLocaleTimeString()}
+<span className={`flex items-center gap-2 text-xs mt-1 px-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
+          {message.usage && <span title={`${message.usage.prompt_tokens} prompt + ${message.usage.completion_tokens} completion`}>
+            {message.usage.total_tokens} tokens
+          </span>}
         </span>
       </div>
     </div>
