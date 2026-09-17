@@ -37,7 +37,6 @@ jobs:
       - name: Generate wrangler.toml from template
         run: |
           sed -e "s|{{D1_DATABASE_ID}}|${{ secrets.D1_DATABASE_ID }}|g" \
-              -e "s|{{OPENAI_BASE_URL}}|${{ secrets.OPENAI_BASE_URL }}|g" \
               wrangler.toml.template > wrangler.toml
           echo "Generated wrangler.toml:"
           cat wrangler.toml
@@ -99,7 +98,6 @@ jobs:
           # Set secrets for Pages Functions (use echo -n to avoid trailing newline)
           echo -n "${{ secrets.BASIC_AUTH_USER }}" | wrangler pages secret put BASIC_AUTH_USER --project-name ai-chat
           echo -n "${{ secrets.BASIC_AUTH_PASS }}" | wrangler pages secret put BASIC_AUTH_PASS --project-name ai-chat
-          echo -n "${{ secrets.OPENAI_API_KEY }}" | wrangler pages secret put OPENAI_API_KEY --project-name ai-chat
           
           # Deploy Pages with Functions
           wrangler pages deploy dist --project-name ai-chat

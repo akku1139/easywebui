@@ -8,6 +8,11 @@ describe('Chat API', () => {
   beforeEach(() => {
     env = createMockEnv();
     vi.clearAllMocks();
+    env.AI_CHAT_DB._addData('settings', {
+      id: 's', providers_json: JSON.stringify([{ id: 'p', baseUrl: 'https://api.openai.com', apiKey: 'test-api-key' }]),
+      models_json: JSON.stringify([{ id: 'm', providerId: 'p', name: 'configured-model' }]),
+      active_model_id: 'm', memory_enabled: 1, auto_memory: 0,
+    });
   });
 
   describe('POST /api/v1/chat/completions', () => {
@@ -186,7 +191,7 @@ describe('Chat API', () => {
       expect(systemMsg.content).toContain('Discussed TypeScript features');
     });
 
-    it('should use custom endpoint when endpoint_id is provided', async () => {
+    it('ignores endpoint_id and uses the saved provider instead', async () => {
       // Add custom endpoint to database
       const db = env.AI_CHAT_DB as any;
       db._addData('api_endpoints', {
@@ -239,10 +244,10 @@ describe('Chat API', () => {
       
       // Verify that custom endpoint was used
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://custom.api.com/v1/chat/completions',
+        'https://api.openai.com/v1/chat/completions',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Authorization': 'Bearer custom-key',
+            'Authorization': 'Bearer test-api-key',
           }),
         })
       );

@@ -14,6 +14,7 @@ export function useChat(settings: Settings) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamContent, setStreamContent] = useState('');
+  const [retryNotice, setRetryNotice] = useState('');
   const [ready, setReady] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -81,7 +82,7 @@ export function useChat(settings: Settings) {
 
   const createConversation = async () => persist(async () => {
     const conversation: Conversation = { id: generateId(), title: 'New Chat', messages: [],
-      createdAt: Date.now(), updatedAt: Date.now(), model: activeEndpoint?.model || 'gpt-4o' };
+      createdAt: Date.now(), updatedAt: Date.now(), model: activeEndpoint?.model || '' };
     await server.saveConversation(conversation);
     commitConversations([conversation, ...convRef.current]);
     setActiveConversationId(conversation.id);
@@ -153,7 +154,7 @@ export function useChat(settings: Settings) {
     if (!activeEndpoint) throw new Error('No active model. Configure a provider and model in Settings.');
     if (!activeEndpoint.baseUrl || !activeEndpoint.apiKey) throw new Error('API configuration is missing. Please configure in Settings.');
     if (busy.current) return;
-    busy.current = true; setIsLoading(true); setStreamContent('');
+    busy.current = true; setIsLoading(true); setStreamContent(''); setRetryNotice('');
     try {
       const conv = activeConversation ?? await createConversation();
       if (!conv) throw new Error('Failed to save conversation');
@@ -175,7 +176,10 @@ export function useChat(settings: Settings) {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         response = await chatCompletion(activeEndpoint, [
           { id: 'system', role: 'system', content: buildSystemPrompt(), timestamp: Date.now() }, ...working.messages,
-        ], tools.length ? tools : undefined, chunk => setStreamContent(previous => previous + chunk));
+        ], tools.length ? tools : undefined, chunk => {
+          setRetryNotice(''); setStreamContent(previous => previous + chunk);
+        }, (delay, retry) => setRetryNotice(`Rate limited (429). Retrying in ${Math.ceil(delay / 1000)}s (${retry}/2)…`));
+        setRetryNotice('');
         if (!response.toolCalls?.length) break;
         // Resolve routing before touching state: an ambiguous or unknown tool
         // aborts without publishing orphan tool_calls to the transcript.
@@ -248,7 +252,7 @@ export function useChat(settings: Settings) {
         } catch (error) { setSyncError(`Automatic memory failed: ${errorText(error)}`); }
       }
       return assistant;
-    } finally { busy.current = false; setIsLoading(false); setStreamContent(''); }
+    } finally { busy.current = false; setIsLoading(false); setStreamContent(''); setRetryNotice(''); }
   };
   const addUserFact = async (content: string, category: UserFact['category'] = 'other') => storeFact({
     id: generateId(), content, category, createdAt: Date.now(), updatedAt: Date.now(), source: 'explicit',
@@ -267,7 +271,7 @@ export function useChat(settings: Settings) {
     } catch (error) { setSyncError(`Summary failed: ${errorText(error)}`); }
   };
   return { conversations, activeConversation, activeConversationId, setActiveConversationId,
-    createConversation, deleteConversation, togglePin, sendMessage, isLoading, streamContent,
+    createConversation, deleteConversation, togglePin, sendMessage, isLoading, streamContent, retryNotice,
     userFacts, summaries, addUserFact, removeUserFact, summarizeAndArchive, ready, syncError,
     retry: () => { hydration.current = null; setAttempt(n => n + 1); } };
 }

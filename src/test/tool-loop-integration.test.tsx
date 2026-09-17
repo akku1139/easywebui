@@ -6,7 +6,7 @@ import worker from '../worker/index';
 import { createMockEnv } from '../worker/test-helpers';
 import { saveSettings, loadSettings } from '../utils/storage';
 
-it('streams a Notion call, executes it through the Worker, sends its result to completions, and saves/displays the final answer', async () => {
+it('continues after a completion 429 without repeating the MCP tool, then saves/displays the final answer', async () => {
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
   const env = createMockEnv();
   env.AI_CHAT_DB._addData('mcp_servers', { id: 'notion', name: 'Notion', url: 'https://mcp.example.com/mcp',
@@ -17,11 +17,16 @@ it('streams a Notion call, executes it through the Worker, sends its result to c
     providers: [{ id: 'p', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api', apiKey: 'shared', createdAt: 1 }],
     models: [{ id: 'm', providerId: 'p', name: 'test-model', createdAt: 1 }], activeModelId: 'm' });
   const completions: any[] = [];
+  let limited = false;
   const methods: string[] = [];
   const sse = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
   vi.mocked(fetch).mockImplementation(async (url, init) => {
     if (String(url).startsWith('https://openrouter.ai')) {
       const body = JSON.parse(String(init?.body));
+      if (body.messages.some((m: any) => m.role === 'tool') && !limited) {
+        limited = true;
+        return new Response('Rate limited', { status: 429, headers: { 'Retry-After': '0' } });
+      }
       completions.push(body);
       if (completions.length === 1) return new Response(': OPENROUTER PROCESSING\n\n' +
         sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'notion-fetch', arguments: '' } }] } }] }) +
@@ -60,4 +65,5 @@ it('streams a Notion call, executes it through the Worker, sends its result to c
   expect(messages[2].toolResult).toMatchObject({ toolCallId: 'call-1', content: 'Notion page body' });
   expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/call']);
   expect(completions).toHaveLength(2);
+  expect(limited).toBe(true);
 });

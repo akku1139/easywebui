@@ -19,9 +19,9 @@ export interface Env {
   BASIC_AUTH_USER: string;
   BASIC_AUTH_PASS: string;
   
-  // OpenAI
-  OPENAI_API_KEY: string;
-  OPENAI_BASE_URL: string;
+  // Legacy deployment variables are ignored; provider settings in D1 win.
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

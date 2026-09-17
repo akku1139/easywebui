@@ -25,7 +25,7 @@ export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   messagesJson: text('messages_json').notNull().default('[]'),
-  model: text('model').notNull().default('gpt-4o'),
+  model: text('model').notNull().default(''),
   pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),

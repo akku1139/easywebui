@@ -196,6 +196,7 @@ function ChatApp() {
 
         {serverSettings.syncError && <button onClick={serverSettings.retry}>Retry loading settings</button>}
         {chat.syncError && !chat.ready && <button onClick={chat.retry}>Retry loading conversations</button>}
+        {chat.retryNotice && <p role="status" className="px-4 py-2 text-sm text-amber-500">{chat.retryNotice}</p>}
         {/* Chat */}
         <ChatView
           messages={chat.activeConversation?.messages || []}

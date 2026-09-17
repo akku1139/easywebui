@@ -16,7 +16,7 @@ type Row = Record<string, any>;
 const TABLE_DEFAULTS: Record<string, Row> = {
   user_facts: { category: 'other', source: 'explicit' },
   conversation_summaries: { message_count: 0 },
-  conversations: { messages_json: '[]', model: 'gpt-4o', pinned: 0 },
+  conversations: { messages_json: '[]', model: '', pinned: 0 },
   mcp_servers: {
     enabled: 1,
     tools_json: '[]',

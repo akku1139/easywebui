@@ -4,6 +4,7 @@ export function providerHeaders(baseUrl: string): Record<string, string> {
     if (new URL(baseUrl).hostname === 'openrouter.ai') {
       return {
         'HTTP-Referer': 'https://github.com/akku1139/easywebui',
+        'X-OpenRouter-Title': 'easywebui',
         'X-Title': 'easywebui',
       };
     }

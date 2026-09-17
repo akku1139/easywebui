@@ -157,9 +157,8 @@ npx wrangler d1 create ai-chat-db
 npm run db:migrate:prod
 
 # wrangler.toml.template から wrangler.toml を生成
-# {{D1_DATABASE_ID}} と {{OPENAI_BASE_URL}} を実際の値に置き換え
+# {{D1_DATABASE_ID}} を実際の値に置き換え
 sed -e "s|{{D1_DATABASE_ID}}|YOUR_D1_ID|g" \
-    -e "s|{{OPENAI_BASE_URL}}|https://api.openai.com|g" \
     wrangler.toml.template > wrangler.toml
 
 # Pages プロジェクト作成
@@ -168,7 +167,6 @@ npx wrangler pages project create ai-chat --production-branch ai-chat-web-ui-dev
 # シークレット設定
 npx wrangler pages secret put BASIC_AUTH_USER --project-name ai-chat
 npx wrangler pages secret put BASIC_AUTH_PASS --project-name ai-chat
-npx wrangler pages secret put OPENAI_API_KEY --project-name ai-chat
 ```
 
 #### GitHub Actions での自動デプロイ
@@ -182,8 +180,6 @@ GitHub リポジトリの Settings > Secrets and variables > Actions で以下�
 | `D1_DATABASE_ID` | D1データベースID |
 | `BASIC_AUTH_USER` | Basic認証ユーザー名（ブラウザのダイアログで入力） |
 | `BASIC_AUTH_PASS` | Basic認証パスワード（ブラウザのダイアログで入力） |
-| `OPENAI_API_KEY` | OpenAI (または互換API) のキー |
-| `OPENAI_BASE_URL` | APIのベースURL (デフォルト: https://api.openai.com) |
 
 設定後、`main`ブランチにプッシュすると自動的にデプロイされます。
 
@@ -195,7 +191,7 @@ GitHub リポジトリの Settings > Secrets and variables > Actions で以下�
 
 ### Cloudflare Workers AI を使う場合
 
-`OPENAI_BASE_URL` に以下を設定：
+SettingsのProviderのBase URLに以下を設定（APIキー・モデル名もSettingsで選択）：
 
 ```
 https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai

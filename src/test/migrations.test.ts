@@ -66,6 +66,8 @@ it('applies the checked-in migrations once and preserves data on rerun', async (
   }, { migrationsFolder: './drizzle' });
   try {
     await apply();
+    sqlite.exec("INSERT INTO conversations (id, title, created_at, updated_at) VALUES ('no-model', 'New chat', 1, 1)");
+    expect(sqlite.prepare("SELECT model FROM conversations WHERE id = 'no-model'").get()).toMatchObject({ model: '' });
     sqlite.exec("INSERT INTO mcp_servers (id, name, url, created_at) VALUES ('kept', 'MCP', 'https://example.com', 1)");
     const before = sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
     const journal = JSON.parse(readFileSync('drizzle/meta/_journal.json', 'utf8'));

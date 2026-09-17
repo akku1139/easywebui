@@ -8,5 +8,6 @@ it('attributes OpenRouter chat calls without adding headers to unrelated provide
   const headers = new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers);
   expect(headers.get('HTTP-Referer')).toBe('https://github.com/akku1139/easywebui');
   expect(headers.get('X-Title')).toBe('easywebui');
+  expect(headers.get('X-OpenRouter-Title')).toBe('easywebui');
   expect(providerHeaders('https://api.openai.com/v1')).toEqual({});
 });

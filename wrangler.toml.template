@@ -13,19 +13,14 @@ binding = "AI_CHAT_DB"
 database_name = "ai-chat-db"
 database_id = "{{D1_DATABASE_ID}}"
 
-# Environment variables
-# These will be set via GitHub Secrets
-[vars]
-OPENAI_BASE_URL = "{{OPENAI_BASE_URL}}"
+# Model names, provider URLs and keys are configured in Settings (D1).
 
 # Note: The following secrets should be set in GitHub repository settings:
 # - BASIC_AUTH_USER
 # - BASIC_AUTH_PASS
-# - OPENAI_API_KEY
 # - CLOUDFLARE_API_TOKEN
 # - CLOUDFLARE_ACCOUNT_ID
 # - D1_DATABASE_ID
-# - OPENAI_BASE_URL
 
 # Development settings
 [dev]

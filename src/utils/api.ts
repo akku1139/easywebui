@@ -1,18 +1,16 @@
 import { Message, ToolCall, APIConfig } from '../types';
 import { providerHeaders } from './provider-headers';
-
-function normalizeApiBaseUrl(baseUrl: string) {
-  const normalized = baseUrl.trim().replace(/\/+$/, '');
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
-}
+import { completionUrl, fetchCompletionWithRetry, RateLimitError } from './completion-request';
 
 // OpenAI Compatible API client
 export async function chatCompletion(
   config: APIConfig,
   messages: Message[],
   tools?: { name: string; description: string; inputSchema: Record<string, unknown> }[],
-  onStream?: (chunk: string) => void
+  onStream?: (chunk: string) => void,
+  onRetry?: (delayMs: number, retry: number) => void,
 ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  if (!config.model?.trim() || !config.baseUrl?.trim()) throw new Error('Configure a provider and model in Settings.');
   const formattedMessages = messages.map(m => ({
     role: m.role,
     content: m.content,
@@ -41,7 +39,7 @@ export async function chatCompletion(
     }));
   }
 
-  const response = await fetch(`${normalizeApiBaseUrl(config.baseUrl)}/chat/completions`, {
+  const response = await fetchCompletionWithRetry(completionUrl(config.baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -49,8 +47,12 @@ export async function chatCompletion(
       ...providerHeaders(config.baseUrl),
     },
     body: JSON.stringify(body),
-  });
+  }, onRetry);
 
+  if (response.status === 429) {
+    await response.body?.cancel();
+    throw new RateLimitError(response.headers.get('Retry-After'));
+  }
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`API Error: ${response.status} - ${error}`);

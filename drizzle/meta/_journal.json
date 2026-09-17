@@ -15,6 +15,13 @@
       "when": 1789619833647,
       "tag": "0001_provider_model_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789628283198,
+      "tag": "0002_conscious_sabretooth",
+      "breakpoints": true
     }
   ]
 }
