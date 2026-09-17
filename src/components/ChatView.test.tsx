@@ -35,6 +35,42 @@ describe('ChatView', () => {
     expect(screen.getByText('Hi there!')).toBeInTheDocument();
   });
 
+  it('labels existing tool history and collapses full results without discarding content', () => {
+    const body = 'Long tool output\n'.repeat(500);
+    render(<ChatView {...defaultProps} messages={[
+      { id: 'a', role: 'assistant', content: '', timestamp: 1, toolCalls: [
+        { id: 'c', name: 'notion-fetch', arguments: {}, serverId: 's' },
+      ] },
+      { id: 't', role: 'tool', content: body, timestamp: 2, toolResult: { toolCallId: 'c', content: body } },
+      { id: 'a2', role: 'assistant', content: '', timestamp: 3, toolCalls: [
+        { id: 'c', name: 'easywebui_execute_tool', arguments: { tool_id: '["s2","search"]' }, serverId: '' },
+      ] },
+      { id: 't2', role: 'tool', content: 'boom', timestamp: 4, toolResult: { toolCallId: 'c', content: 'boom', isError: true } },
+    ]} />);
+    const details = document.querySelectorAll('details');
+    expect(details[0].querySelector('summary')).toHaveTextContent('notion-fetch');
+    expect(details[0]).not.toHaveAttribute('open');
+    expect(details[0].querySelector('pre')?.textContent).toBe(body);
+    expect(details[0].querySelector('pre')).toHaveClass('max-h-60', 'overflow-auto');
+    fireEvent.click(details[0].querySelector('summary')!);
+    expect(details[0]).toHaveAttribute('open');
+    fireEvent.click(details[0].querySelector('summary')!);
+    expect(details[0]).not.toHaveAttribute('open');
+    expect(details[1].querySelector('summary')).toHaveTextContent('search (s2) (error)');
+    expect(details[1]).toHaveAttribute('open');
+  });
+
+  it('falls back to a stored tool name or generic heading for unpaired old results', () => {
+    render(<ChatView {...defaultProps} messages={[
+      { id: 't', role: 'tool', content: 'result', timestamp: 1,
+        toolResult: { toolCallId: 'missing', content: 'result', toolName: 'stored-tool' } },
+      { id: 'old', role: 'tool', content: 'legacy', timestamp: 1 },
+    ]} />);
+    const headings = document.querySelectorAll('summary');
+    expect(headings[0]).toHaveTextContent('stored-tool');
+    expect(headings[1]).toHaveTextContent('Tool Result');
+  });
+
   it('shows per-message token usage when the provider reports it', () => {
     render(<ChatView {...defaultProps} messages={[...mockMessages,
       { id: 'u3', role: 'assistant', content: 'Measured answer', timestamp: Date.now(),

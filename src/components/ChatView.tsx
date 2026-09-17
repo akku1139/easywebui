@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Message } from '../types';
+import { toolLabel } from '../utils/tool-label';
 import { MarkdownContent } from './MarkdownContent';
 
 interface Props {
@@ -13,6 +14,17 @@ interface Props {
 
 export default function ChatView({ messages, isLoading, streamContent, onSend, error, theme }: Props) {
   const isDark = theme === 'dark';
+  // Walk in order so provider call IDs reused on later turns do not relabel history.
+  const resultLabels = useMemo(() => {
+    const calls = new Map<string, string>();
+    const labels = new Map<string, string>();
+    for (const message of messages) {
+      for (const call of message.toolCalls ?? []) calls.set(call.id, toolLabel(call));
+      if (message.toolResult) labels.set(message.id,
+        calls.get(message.toolResult.toolCallId) || message.toolResult.toolName || 'Tool Result');
+    }
+    return labels;
+  }, [messages]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -72,7 +84,7 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
 
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
           {messages.map(msg => (
-            <MessageBubble key={msg.id} message={msg} isDark={isDark} />
+            <MessageBubble key={msg.id} message={msg} isDark={isDark} toolName={resultLabels.get(msg.id)} />
           ))}
           
           {streamContent && (
@@ -163,29 +175,36 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
   );
 }
 
-function MessageBubble({ message, isDark }: { message: Message; isDark: boolean }) {
+function MessageBubble({ message, isDark, toolName }: { message: Message; isDark: boolean; toolName?: string }) {
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
 
   if (isTool) {
+    // Compact by default: the tool name stays in the header, the long body is
+    // collapsed and expandable. Errors render expanded so they stay visible.
+    const isError = message.toolResult?.isError;
     return (
-      <div className="flex gap-3">
-        <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center shrink-0">
-          <svg className="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-        <div className={`flex-1 border rounded-2xl px-4 py-3 ${
-          isDark 
-            ? 'bg-yellow-500/5 border-yellow-500/20' 
-            : 'bg-yellow-50 border-yellow-200'
-        }`}>
-          <p className="text-xs text-yellow-600 font-medium mb-1">Tool Result</p>
-          <pre className={`text-xs whitespace-pre-wrap font-mono ${
-            isDark ? 'text-gray-300' : 'text-gray-700'
-          }`}>{message.content}</pre>
-        </div>
-      </div>
+      <details className="group min-w-0" open={isError}>
+        <summary className="flex gap-2 items-center cursor-pointer list-none min-w-0 rounded p-1 focus-visible:outline focus-visible:outline-2">
+          <span aria-hidden="true" className="shrink-0 text-gray-500 transition-transform group-open:rotate-90">▸</span>
+          <div className="w-6 h-6 rounded-lg bg-yellow-500/20 flex items-center justify-center shrink-0">
+            <svg className="w-3.5 h-3.5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <span title={toolName} className={`min-w-0 truncate text-xs px-2 py-0.5 rounded-full ${
+            isError ? 'bg-red-500/20 text-red-500' : isDark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            🔧 {toolName || 'Tool Result'}{isError ? ' (error)' : ''}
+          </span>
+          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+            {message.content.length.toLocaleString()} chars
+          </span>
+        </summary>
+        <pre className={`max-h-60 overflow-auto break-words border rounded-xl px-3 py-2 text-xs whitespace-pre-wrap font-mono mt-2 ${
+          isDark ? 'bg-yellow-500/5 border-yellow-500/20 text-gray-300' : 'bg-yellow-50 border-yellow-200 text-gray-700'
+        }`}>{message.content}</pre>
+      </details>
     );
   }
 

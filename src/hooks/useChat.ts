@@ -3,6 +3,7 @@ import { Message, Conversation, UserFact, ConversationSummary, Settings } from '
 import { chatCompletion, extractMemoryFacts, summarizeConversation } from '../utils/api';
 import * as server from '../utils/api-client';
 import { createToolCatalog, SEARCH_TOOL } from '../utils/tool-catalog';
+import { toolLabel } from '../utils/tool-label';
 import {
   loadConversations, saveConversations, loadUserFacts, saveUserFacts,
   loadSummaries, saveSummaries, generateId, resolveModel,
@@ -123,7 +124,8 @@ export function useChat(settings: Settings) {
     await server.addMemoryFact(fact);
     commitFacts([...factsRef.current, fact]);
   });
-  const MAX_TOOL_ROUNDS = 5;
+  // Bound automatic work/cost without cutting off normal search + execution flows.
+  const MAX_TOOL_ROUNDS = 20;
 
   const sendMessage = async (content: string) => {
     if (!ready) throw new Error('Server data is still loading');
@@ -171,7 +173,7 @@ export function useChat(settings: Settings) {
         const planned = response.toolCalls.map(call => ({ call: { ...call, serverId: resolveServer(call.name) } }));
         working = { ...working, messages: [...working.messages, {
           id: generateId(), role: 'assistant', content: response.content,
-          timestamp: Date.now(), model: activeEndpoint.model, toolCalls: planned.map(p => p.call),
+          timestamp: Date.now(), model: activeEndpoint.model, toolCalls: planned.map(p => p.call), usage: response.usage,
         }], updatedAt: Date.now() };
         // Durably record intent before any side effects. Paired placeholders
         // keep the transcript valid if the tab closes or saving results fails.
@@ -198,7 +200,7 @@ export function useChat(settings: Settings) {
             result = { content: errorText(error), isError: true };
           }
           toolMessages.push({ id: generateId(), role: 'tool', content: result.content, timestamp: Date.now(),
-            toolResult: { toolCallId: call.id, content: result.content, isError: result.isError } });
+            toolResult: { toolCallId: call.id, content: result.content, isError: result.isError, toolName: toolLabel(call) } });
         }
         working = { ...working, messages: [...working.messages, ...toolMessages], updatedAt: Date.now() };
         const stored = await persist(async () => {
@@ -215,7 +217,18 @@ export function useChat(settings: Settings) {
         setStreamContent('');
         response = undefined;
       }
-      if (!response) throw new Error(`Tool execution did not finish within ${MAX_TOOL_ROUNDS} rounds. Try a simpler request or disable some tools.`);
+      if (!response) {
+        // All completed results are already saved. Request an answer, not more
+        // tools, and never execute calls a provider might return anyway.
+        const final = await chatCompletion(activeEndpoint, [
+          { id: 'system', role: 'system', content: buildSystemPrompt(), timestamp: Date.now() },
+          ...modelMessages(),
+          { id: 'tool-budget', role: 'system', timestamp: Date.now(), content:
+            'The automatic tool budget for this turn has been reached. No more tools are available. Summarize the results obtained and clearly state any unfinished work. Do not claim unfinished work succeeded. The user can request continuation in a new message.' },
+        ], undefined, chunk => { setRetryNotice(''); setStreamContent(previous => previous + chunk); },
+        (delay, retry) => setRetryNotice(`Rate limited (429). Retrying in ${Math.ceil(delay / 1000)}s (${retry}/2)…`));
+        response = { content: final.content || 'Automatic tool work paused. Completed tool results are saved above. Send another message to continue.', usage: final.usage };
+      }
       const assistant: Message = { id: generateId(), role: 'assistant', content: response.content,
         timestamp: Date.now(), model: activeEndpoint.model, toolCalls: response.toolCalls, usage: response.usage };
       const complete = { ...working, messages: [...working.messages, assistant], updatedAt: Date.now() };

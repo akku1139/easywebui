@@ -50,6 +50,8 @@ export interface ToolCall {
 export interface ToolResult {
   toolCallId: string;
   content: string;
+  /** Resolved MCP tool that produced this result, for display and audit. */
+  toolName?: string;
   isError?: boolean;
 }
 

@@ -72,7 +72,7 @@ describe('useChat tool loop', () => {
     // The re-query carries the assistant tool_calls plus the tool result message.
     const second = chatMock.mock.calls[1][1];
     const toolMsg = second.find(m => m.role === 'tool');
-    expect(toolMsg?.toolResult).toEqual({ toolCallId: 'call-1', content: 'page body', isError: false });
+    expect(toolMsg?.toolResult).toEqual({ toolCallId: 'call-1', content: 'page body', isError: false, toolName: 'notion-fetch' });
     const roles = result.current.activeConversation?.messages.map(m => m.role);
     expect(roles).toEqual(['user', 'assistant', 'tool', 'assistant']);
     expect(result.current.activeConversation?.messages[3].content).toBe('Here is your page');
@@ -94,17 +94,39 @@ describe('useChat tool loop', () => {
     expect(chatMock).toHaveBeenCalledTimes(1);
   });
 
-  it('stops after the round limit and reports it instead of looping forever', async () => {
+  it('bounds tool work and requests a tool-free summary instead of a round-limit error', async () => {
     mockFetch({ content: 'still working' });
-    chatMock.mockImplementation(async () => ({
-      content: '', toolCalls: [{ id: `call-${Math.random()}`, name: 'notion-fetch', arguments: {}, serverId: '' }],
-    }));
+    chatMock.mockImplementation(async (_config, messages, tools) => {
+      if (!tools) {
+        expect(messages.at(-1)?.content).toContain('clearly state any unfinished work');
+        return { content: 'Partial results; more work remains.',
+          toolCalls: [{ id: 'ignored', name: 'notion-fetch', arguments: {}, serverId: '' }] };
+      }
+      return { content: '', toolCalls: [{ id: `call-${chatMock.mock.calls.length}`, name: 'notion-fetch', arguments: {}, serverId: '' }] };
+    });
     const { result } = renderHook(() => useChat(settingsWithTools()));
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => {
-      await expect(result.current.sendMessage('loop')).rejects.toThrow(/Tool execution did not finish/);
+      await result.current.sendMessage('loop');
     });
-    expect(chatMock.mock.calls.length).toBe(5);
+    expect(chatMock).toHaveBeenCalledTimes(21);
+    expect(toolCallBodies).toHaveLength(20);
+    expect(result.current.activeConversation?.messages.at(-1)).toMatchObject({
+      role: 'assistant', content: 'Partial results; more work remains.',
+    });
+    expect(result.current.activeConversation?.messages.at(-1)?.toolCalls).toBeUndefined();
+  });
+
+  it('allows a normal task to finish after more than five tool rounds', async () => {
+    mockFetch({ content: 'step completed' });
+    chatMock.mockImplementation(async () => chatMock.mock.calls.length <= 6
+      ? { content: '', toolCalls: [{ id: `step-${chatMock.mock.calls.length}`, name: 'notion-fetch', arguments: {}, serverId: '' }] }
+      : { content: 'All six steps complete.' });
+    const { result } = renderHook(() => useChat(settingsWithTools()));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => { await result.current.sendMessage('Six steps'); });
+    expect(toolCallBodies).toHaveLength(6);
+    expect(result.current.activeConversation?.messages.at(-1)?.content).toBe('All six steps complete.');
   });
 
   it('rejects ambiguous duplicate tool names across servers', async () => {
@@ -159,6 +181,8 @@ describe('useChat tool loop', () => {
     await act(async () => { await result.current.sendMessage('Fetch notion page'); });
     expect(toolCallBodies).toEqual([{ serverId: 'srv-1', name: 'notion-fetch', arguments: { id: 'self' } }]);
     expect(result.current.activeConversation?.messages.at(-1)?.content).toBe('Page found');
+    expect(result.current.activeConversation?.messages.find(m => m.toolResult?.toolCallId === 'exec')?.toolResult?.toolName)
+      .toBe('notion-fetch (srv-1)');
     for (const [, messages, tools] of chatMock.mock.calls) {
       expect(tools).toHaveLength(2);
       expect(JSON.stringify({ messages, tools })).not.toContain('UNRELATED_CATALOG_METADATA');
