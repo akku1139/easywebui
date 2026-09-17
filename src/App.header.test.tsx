@@ -32,4 +32,8 @@ it('keeps the header when a conversation finishes loading', async () => {
   expect(screen.getByText('Earlier question')).toBeInTheDocument();
   expect(screen.getByLabelText('Active model')).toBeEnabled();
   expect(screen.getByText('2 messages')).toBeInTheDocument();
+  expect(document.title).toBe('Old chat - easywebui');
+  // Without an active conversation the app name alone is shown.
+  fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+  await waitFor(() => expect(document.title).toBe('New Chat - easywebui'));
 });

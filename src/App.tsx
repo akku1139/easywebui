@@ -77,6 +77,10 @@ function ChatApp() {
   const handleUpdateMCPServers = (servers: Settings['mcpServers']) =>
     serverSettings.update({ ...settings, mcpServers: servers });
   const activeModel = resolveModel(settings);
+  // Reflect the loaded conversation in the browser tab.
+  useEffect(() => {
+    document.title = chat.activeConversation ? `${chat.activeConversation.title} - easywebui` : 'easywebui';
+  }, [chat.activeConversation?.id, chat.activeConversation?.title]);
 
 
   return (
