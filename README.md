@@ -331,4 +331,4 @@ ConnectはWorker経由でMCP Streamable HTTPの`initialize`、`notifications/ini
 
 サーバーURLにはStreamable HTTPのエンドポイント（例: `https://example.com/mcp`）を指定してください。旧HTTP+SSE方式の`/sse`エンドポイントやstdio接続には対応していません。またCloudflareから到達できないPC内のlocalhostには接続できません。通信・JSON-RPCエラーは接続失敗として表示し、空のツール一覧と区別します。
 
-この接続処理はツールの取得用です。モデルが返す`tools/call`を実行して結果をモデルへ渡す処理は別途必要です。
+モデルが返すストリームの`tool_calls`を組み立て、Workerの`/api/mcp-servers/call`で実行し、`tool_call_id`付きの結果をモデルに返して回答を続けます。completionsへの通信はブラウザーが行い、MCPのURL・OAuthトークンはWorkerがD1から取得します。ツールは有効な接続先から選ばれ、実行の自動再試行はしません。連続呼び出しには上限があり、失敗は画面に表示します。

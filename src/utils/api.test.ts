@@ -14,6 +14,92 @@ describe('API Utils', () => {
   });
 
   describe('chatCompletion', () => {
+    it('accumulates streamed tool_calls deltas into executable calls', async () => {
+      const chunks = [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'notion-fetch', arguments: '' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ id: 'self' }) } }] } }] },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ];
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        chunks.map(c => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n',
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      ));
+      const result = await chatCompletion(mockConfig, [], undefined, () => {});
+      expect(result.toolCalls).toEqual([{ id: 'call-1', name: 'notion-fetch', arguments: { id: 'self' }, serverId: '' }]);
+      expect(result.content).toBe('');
+    });
+
+    it('keeps streamed content and tool calls in the same response', async () => {
+      const chunks = [
+        { choices: [{ delta: { content: 'Looking' } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c2', type: 'function', function: { name: 'search', arguments: '{}' } }] } }] },
+      ];
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        chunks.map(c => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n'));
+      const result = await chatCompletion(mockConfig, [], undefined, () => {});
+      expect(result.content).toBe('Looking');
+      expect(result.toolCalls?.[0]).toMatchObject({ name: 'search', arguments: {} });
+    });
+
+    it('reassembles tool arguments split across SSE chunks and partial reads', async () => {
+      const events = [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c9', type: 'function', function: { name: 'notion-fetch', arguments: '' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"id": "se' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'lf"}' } }] } }] },
+      ].map(event => `data: ${JSON.stringify(event)}\n\n`);
+      events.push('data: [DONE]\n');
+      // Split the raw SSE text at arbitrary byte offsets, like a real stream.
+      const payload = events.join('');
+      const raw = new TextEncoder().encode(payload);
+      const split = Math.floor(raw.length / 3);
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(raw.slice(0, split));
+            controller.enqueue(raw.slice(split, split * 2));
+            controller.enqueue(raw.slice(split * 2));
+            controller.close();
+          },
+        })));
+      const result = await chatCompletion(mockConfig, [], undefined, () => {});
+      expect(result.toolCalls).toEqual([{ id: 'c9', name: 'notion-fetch', arguments: { id: 'self' }, serverId: '' }]);
+    });
+
+    it('accumulates parallel tool calls by index and preserves order', async () => {
+      const events = [
+        { choices: [{ delta: { tool_calls: [{ index: 1, id: 'b', type: 'function', function: { name: 'second', arguments: '{}' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'a', type: 'function', function: { name: 'first', arguments: '{"x":1' } }] } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: ',"y":2}' } }] } }] },
+      ];
+
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        events.map(e => `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n'));
+      const result = await chatCompletion(mockConfig, [], undefined, () => {});
+      expect(result.toolCalls?.map(t => t.name)).toEqual(['first', 'second']);
+      expect(result.toolCalls?.[0].arguments).toEqual({ x: 1, y: 2 });
+    });
+
+    it('surfaces malformed streamed tool arguments instead of returning them silently', async () => {
+      const events = [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'bad', type: 'function', function: { name: 'x', arguments: 'not-json' } }] } }] },
+      ];
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        events.map(e => `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n'));
+      await expect(chatCompletion(mockConfig, [], undefined, () => {}))
+        .rejects.toThrow(/invalid tool call arguments/i);
+    });
+
+    it('treats SSE comment lines as separators, not data', async () => {
+      const events = [
+        ': OPENROUTER PROCESSING\n\n',
+        { choices: [{ delta: { content: 'ok' } }] },
+      ];
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(
+        events.map(e => typeof e === 'string' ? e : `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n'));
+      const result = await chatCompletion(mockConfig, [], undefined, () => {});
+      expect(result.content).toBe('ok');
+    });
+
     it('should format messages correctly for OpenAI API', async () => {
       const messages: Message[] = [
         { id: '1', role: 'user', content: 'Hello', timestamp: Date.now() },

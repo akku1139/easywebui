@@ -127,6 +127,27 @@ export function useChat(settings: Settings) {
     await server.addMemoryFact(fact);
     commitFacts([...factsRef.current, fact]);
   });
+  // Enabled, connected servers expose tools to the model. Names must be
+  // unambiguous: a duplicate name cannot be routed to one server reliably.
+  const toolRegistry = () => {
+    const byName = new Map<string, string[]>();
+    const tools: { name: string; description: string; inputSchema: Record<string, unknown> }[] = [];
+    for (const s of settings.mcpServers.filter(s => s.enabled && s.status === 'connected'))
+      for (const t of s.tools) {
+        if (!byName.has(t.name)) tools.push({ name: t.name, description: t.description, inputSchema: t.inputSchema });
+        byName.set(t.name, [...(byName.get(t.name) ?? []), s.id]);
+      }
+    const resolveServer = (name: string) => {
+      const ids = byName.get(name);
+      if (!ids?.length) throw new Error(`Tool "${name}" is not available on any connected MCP server.`);
+      if (ids.length > 1) throw new Error(`Tool "${name}" is provided by multiple MCP servers (${ids.join(', ')}); remove the duplicate in Settings.`);
+      return ids[0];
+    };
+    return { tools, resolveServer };
+  };
+
+  const MAX_TOOL_ROUNDS = 5;
+
   const sendMessage = async (content: string) => {
     if (!ready) throw new Error('Server data is still loading');
     if (!activeEndpoint) throw new Error('No active model. Configure a provider and model in Settings.');
@@ -137,29 +158,84 @@ export function useChat(settings: Settings) {
       const conv = activeConversation ?? await createConversation();
       if (!conv) throw new Error('Failed to save conversation');
       const user: Message = { id: generateId(), role: 'user', content, timestamp: Date.now() };
-      const updated = { ...conv, messages: [...conv.messages, user], updatedAt: Date.now(),
+      let working = { ...conv, messages: [...conv.messages, user], updatedAt: Date.now(),
         model: activeEndpoint.model, title: conv.messages.length ? conv.title : content.slice(0, 50) };
       const saved = await persist(async () => {
-        await server.saveConversation(updated);
-        commitConversations(convRef.current.map(c => c.id === conv.id ? updated : c));
+        await server.saveConversation(working);
+        commitConversations(convRef.current.map(c => c.id === conv.id ? working : c));
         return true;
       });
       if (!saved) throw new Error('Failed to save your message');
-      const tools = settings.mcpServers.filter(s => s.enabled && s.status === 'connected')
-        .flatMap(s => s.tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })));
-      const response = await chatCompletion(activeEndpoint, [
-        { id: 'system', role: 'system', content: buildSystemPrompt(), timestamp: Date.now() }, ...updated.messages,
-      ], tools.length ? tools : undefined, chunk => setStreamContent(previous => previous + chunk));
+      const { tools, resolveServer } = toolRegistry();
+      // Tool loop: the model may request tools several times; each completed
+      // round (assistant tool_calls + every paired tool result) is persisted
+      // before the next model query so a failure never leaves a transcript
+      // whose tool results are missing.
+      let response: Awaited<ReturnType<typeof chatCompletion>> | undefined;
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        response = await chatCompletion(activeEndpoint, [
+          { id: 'system', role: 'system', content: buildSystemPrompt(), timestamp: Date.now() }, ...working.messages,
+        ], tools.length ? tools : undefined, chunk => setStreamContent(previous => previous + chunk));
+        if (!response.toolCalls?.length) break;
+        // Resolve routing before touching state: an ambiguous or unknown tool
+        // aborts without publishing orphan tool_calls to the transcript.
+        const planned = response.toolCalls.map(call => ({ call: { ...call, serverId: resolveServer(call.name) } }));
+        working = { ...working, messages: [...working.messages, {
+          id: generateId(), role: 'assistant', content: response.content,
+          timestamp: Date.now(), model: activeEndpoint.model, toolCalls: planned.map(p => p.call),
+        }], updatedAt: Date.now() };
+        // Durably record intent before any side effects. Paired placeholders
+        // keep the transcript valid if the tab closes or saving results fails.
+        // They are never replayed automatically on reload.
+        const pending: Message[] = planned.map(({ call }) => ({ id: generateId(), role: 'tool',
+          content: 'Tool execution interrupted or result not saved; outcome unknown. Do not automatically retry.', timestamp: Date.now(),
+          toolResult: { toolCallId: call.id, content: 'Tool execution interrupted or result not saved; outcome unknown. Do not automatically retry.', isError: true } }));
+        const checkpoint = { ...working, messages: [...working.messages, ...pending] };
+        const checkpointSaved = await persist(async () => {
+          await server.saveConversation(checkpoint);
+          commitConversations(convRef.current.map(c => c.id === conv.id ? { ...checkpoint, pinned: c.pinned } : c));
+          return true;
+        });
+        if (!checkpointSaved) throw new Error('Failed to save tool call; no tools were executed.');
+        const toolMessages: Message[] = [];
+        let transportFailure: string | undefined;
+        for (const { call } of planned) {
+          let result: { content: string; isError: boolean };
+          try {
+            result = transportFailure ? { content: 'Not executed because a previous tool call failed.', isError: true }
+              : await server.callMCPTool(call.serverId, call.name, call.arguments);
+          } catch (error) {
+            transportFailure = errorText(error);
+            result = { content: errorText(error), isError: true };
+          }
+          toolMessages.push({ id: generateId(), role: 'tool', content: result.content, timestamp: Date.now(),
+            toolResult: { toolCallId: call.id, content: result.content, isError: result.isError } });
+        }
+        working = { ...working, messages: [...working.messages, ...toolMessages], updatedAt: Date.now() };
+        const stored = await persist(async () => {
+          await server.saveConversation(working);
+          commitConversations(convRef.current.map(c => c.id === conv.id ? { ...working, pinned: c.pinned } : c));
+          return true;
+        });
+        if (!stored) {
+          // Preserve a recoverable local draft, without claiming the server saved it.
+          saveConversations(convRef.current.map(c => c.id === conv.id ? working : c));
+          throw new Error('Reply could not be saved to server; a draft remains in this browser.');
+        }
+        if (transportFailure) throw new Error(transportFailure);
+        setStreamContent('');
+        response = undefined;
+      }
+      if (!response) throw new Error(`Tool execution did not finish within ${MAX_TOOL_ROUNDS} rounds. Try a simpler request or disable some tools.`);
       const assistant: Message = { id: generateId(), role: 'assistant', content: response.content,
         timestamp: Date.now(), model: activeEndpoint.model, toolCalls: response.toolCalls };
-      const complete = { ...updated, messages: [...updated.messages, assistant], updatedAt: Date.now() };
-      const stored = await persist(async () => {
+      const complete = { ...working, messages: [...working.messages, assistant], updatedAt: Date.now() };
+      const finalStored = await persist(async () => {
         await server.saveConversation(complete);
         commitConversations(convRef.current.map(c => c.id === conv.id ? { ...complete, pinned: c.pinned } : c));
         return true;
       });
-      if (!stored) {
-        // Preserve a recoverable local draft, without claiming the server saved it.
+      if (!finalStored) {
         saveConversations(convRef.current.map(c => c.id === conv.id ? complete : c));
         throw new Error('Reply could not be saved to server; a draft remains in this browser.');
       }
@@ -172,7 +248,7 @@ export function useChat(settings: Settings) {
         } catch (error) { setSyncError(`Automatic memory failed: ${errorText(error)}`); }
       }
       return assistant;
-    } finally { busy.current = false; setIsLoading(false); }
+    } finally { busy.current = false; setIsLoading(false); setStreamContent(''); }
   };
   const addUserFact = async (content: string, category: UserFact['category'] = 'other') => storeFact({
     id: generateId(), content, category, createdAt: Date.now(), updatedAt: Date.now(), source: 'explicit',

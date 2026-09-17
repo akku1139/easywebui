@@ -173,3 +173,13 @@ export async function connectMCPServer(serverId: string) {
   if (!response.ok) throw Object.assign(new Error(data.error || 'Failed to connect MCP server'), { authRequired: data.authRequired });
   return data;
 }
+export async function callMCPTool(serverId: string, name: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  const response = await fetch('/api/mcp-servers/call', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ serverId, name, arguments: args }),
+  });
+  const data = await response.json() as { error?: string; content: string; isError: boolean };
+  if (!response.ok) throw new Error(data.error || 'MCP tool call failed');
+  if (typeof data.content !== 'string' || typeof data.isError !== 'boolean') throw new Error('Invalid MCP tool result');
+  return data;
+}

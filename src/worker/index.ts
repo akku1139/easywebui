@@ -6,6 +6,7 @@ import { handleMemoryFacts, handleSummaries } from './api/memory';
 import { handleConversations } from './api/conversations';
 import { handleMCPServers } from './api/mcp';
 import { handleMCPConnect } from './api/mcp-connect';
+import { handleMCPToolCall } from './api/mcp-tools';
 import { handleMCPOAuth } from './api/mcp-oauth';
 import { handleEndpoints } from './api/endpoints';
 import { handleSettings } from './api/settings';
@@ -63,6 +64,7 @@ app.delete('/api/conversations', handleConversations);
 // MCP
 app.get('/api/mcp-servers', handleMCPServers);
 app.post('/api/mcp-servers/connect', handleMCPConnect);
+app.post('/api/mcp-servers/call', handleMCPToolCall);
 app.post('/api/mcp-servers', handleMCPServers);
 app.patch('/api/mcp-servers', handleMCPServers);
 app.delete('/api/mcp-servers', handleMCPServers);

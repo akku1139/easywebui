@@ -100,34 +100,60 @@ async function handleStreamResponse(
   const decoder = new TextDecoder();
   let content = '';
   let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') return { content };
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices[0]?.delta;
-          if (delta?.content) {
-            content += delta.content;
-            onStream(delta.content);
-          }
-        } catch {
-          // skip parse errors
-        }
+  const calls = new Map<number, { id: string; name: string; args: string }>();
+  const finish = () => {
+    const toolCalls = [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => {
+      if (!call.id || !call.name) throw new Error('Incomplete streamed tool call');
+      let args: Record<string, unknown>;
+      try {
+        args = JSON.parse(call.args);
+        if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error();
+      } catch { throw new Error('Stream contained invalid tool call arguments'); }
+      return { id: call.id, name: call.name, arguments: args, serverId: '' };
+    });
+    if (new Set(toolCalls.map(call => call.id)).size !== toolCalls.length) throw new Error('Duplicate tool call id');
+    return { content, toolCalls: toolCalls.length ? toolCalls : undefined };
+  };
+  const consume = (line: string) => {
+    if (!line.startsWith('data:')) return false;
+    const data = line.slice(5).trim();
+    if (data === '[DONE]') return true;
+    if (!data) return false;
+    let parsed;
+    try { parsed = JSON.parse(data); } catch { throw new Error('Invalid completion stream JSON'); }
+    if (parsed.error) throw new Error(parsed.error.message || 'Completion stream failed');
+    const choice = parsed.choices?.find((c: { index?: number }) => c.index === undefined || c.index === 0);
+    const delta = choice?.delta;
+    if (typeof delta?.content === 'string') {
+      content += delta.content;
+      onStream(delta.content);
+    }
+    for (const tc of delta?.tool_calls ?? []) {
+      if (!Number.isInteger(tc.index) || tc.index < 0) throw new Error('Invalid streamed tool call index');
+      const slot = calls.get(tc.index) ?? { id: '', name: '', args: '' };
+      if (typeof tc.id === 'string') slot.id += tc.id;
+      if (typeof tc.function?.name === 'string') slot.name += tc.function.name;
+      if (typeof tc.function?.arguments === 'string') slot.args += tc.function.arguments;
+      calls.set(tc.index, slot);
+    }
+    return false;
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) if (consume(line.replace(/\r$/, ''))) return finish();
+      if (done) {
+        if (buffer) consume(buffer.replace(/\r$/, ''));
+        return finish();
       }
     }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
-
-  return { content };
 }
 
 // Memory extraction - uses LLM to extract facts from conversation
