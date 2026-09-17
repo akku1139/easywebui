@@ -161,3 +161,15 @@ export async function saveSettings(settings: any) {
   if (!response.ok) throw new Error('Failed to save settings');
   return response.json();
 }
+export async function connectMCPServer(serverId: string) {
+  const response = await fetch('/api/mcp-servers/connect', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ serverId }),
+  });
+  const data = await response.json() as {
+    error?: string; authRequired?: boolean; status: 'connected';
+    tools: import('../types').MCPTool[]; lastChecked: number;
+  };
+  if (!response.ok) throw Object.assign(new Error(data.error || 'Failed to connect MCP server'), { authRequired: data.authRequired });
+  return data;
+}

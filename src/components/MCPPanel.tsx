@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { MCPServer, MCPTool, Settings } from '../types';
 import * as apiClient from '../utils/api-client';
 
@@ -18,19 +18,21 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
   const [addError, setAddError] = useState('');
   const [actionError, setActionError] = useState('');
   const [oauthServerId, setOauthServerId] = useState<string | null>(null);
+  const connecting = useRef(new Set<string>());
+  const latestServers = useRef(servers);
+  latestServers.current = servers;
+  const updateServer = (id: string, updates: Partial<MCPServer>) => {
+    const next = latestServers.current.map(s => s.id === id ? { ...s, ...updates } : s);
+    latestServers.current = next;
+    onUpdateServers(next);
+  };
 
   useEffect(() => {
     const handleOAuthComplete = (event: MessageEvent<{ type?: string; serverId?: string }>) => {
       if (event.origin !== window.location.origin || event.data?.type !== 'mcp-oauth-complete') return;
       const serverId = event.data.serverId;
       if (!serverId || !servers.some(server => server.id === serverId)) return;
-      const updatedServers = servers.map(server => (
-        server.id === serverId
-          ? { ...server, status: 'connected' as const, lastChecked: Date.now() }
-          : server
-      ));
-      onUpdateServers(updatedServers);
-      apiClient.updateMCPServer(serverId, { status: 'connected' }).catch(() => {});
+      void connectServer(serverId, true);
     };
 
     window.addEventListener('message', handleOAuthComplete);
@@ -194,29 +196,26 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     }
   };
 
-  const mockConnect = async (id: string) => {
-    const server = servers.find(s => s.id === id);
+  const connectServer = async (id: string, afterOAuth = false) => {
+    if (connecting.current.has(id)) return;
+    const server = latestServers.current.find(s => s.id === id);
     if (!server) return;
-
-    // If OAuth is enabled but not authenticated, start OAuth flow
-    if (server.oauthEnabled && !server.oauthAccessToken) {
-      await startOAuthFlow(id);
-      return;
-    }
-
-    // Mark as connecting
-    onUpdateServers(servers.map(s => {
-      if (s.id !== id) return s;
-      return { ...s, status: 'connecting' as const, lastChecked: Date.now() };
-    }));
-
-    // Simulate connection delay
-    setTimeout(() => {
-      onUpdateServers(servers.map(s => {
-        if (s.id !== id) return s;
-        return { ...s, status: 'connected' as const, tools: [], lastChecked: Date.now() };
-      }));
-    }, 1000);
+    connecting.current.add(id);
+    setActionError('');
+    updateServer(id, { status: 'connecting' });
+    try {
+      // Tokens stay in D1: only the backend knows whether authentication is
+      // available. Do not infer it from the browser's absent access token.
+      const result = await apiClient.connectMCPServer(id);
+      updateServer(id, { status: result.status, tools: result.tools, lastChecked: result.lastChecked });
+    } catch (error) {
+      if (!afterOAuth && server.oauthEnabled && (error as { authRequired?: boolean }).authRequired) {
+        await startOAuthFlow(id);
+      } else {
+        updateServer(id, { status: 'error', lastChecked: Date.now() });
+        setActionError(error instanceof Error ? error.message : 'Failed to connect MCP server');
+      }
+    } finally { connecting.current.delete(id); }
   };
 
   const statusColors = {
@@ -324,7 +323,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
           </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => mockConnect(server.id)}
+                      onClick={() => void connectServer(server.id)}
+                      disabled={server.status === 'connecting'}
                       className={`px-3 py-1 text-xs rounded-md transition ${
                         isDark
                           ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'

@@ -325,3 +325,10 @@ AGPL-3.0-or-later
 - この変更にはDrizzle生成の`0001_provider_model_settings.sql`が必要です。デプロイ時は既存のActionsが先に適用します。
 
 同期は操作時の保存と起動時の読み込みです。複数端末を同時に開いている場合のリアルタイム通知や競合マージは行いません。
+### MCP接続・ツール一覧
+
+ConnectはWorker経由でMCP Streamable HTTPの`initialize`、`notifications/initialized`、`tools/list`を実行し、取得した一覧をD1へ保存します。JSON応答とSSE応答、セッションヘッダー、ツール一覧のページネーションに対応しています。OAuthトークンはD1から読み、ブラウザーへ返しません。認証完了後も同じ接続処理でツールを取得します。
+
+サーバーURLにはStreamable HTTPのエンドポイント（例: `https://example.com/mcp`）を指定してください。旧HTTP+SSE方式の`/sse`エンドポイントやstdio接続には対応していません。またCloudflareから到達できないPC内のlocalhostには接続できません。通信・JSON-RPCエラーは接続失敗として表示し、空のツール一覧と区別します。
+
+この接続処理はツールの取得用です。モデルが返す`tools/call`を実行して結果をモデルへ渡す処理は別途必要です。

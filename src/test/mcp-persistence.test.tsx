@@ -36,3 +36,33 @@ it('persists MCP panel additions through the dedicated API and restores them in 
   await waitFor(() => expect(screen.getByText('Persisted MCP')).toBeInTheDocument());
   expect(env.AI_CHAT_DB._getData('mcp_servers')).toHaveLength(1);
 });
+
+it('Connect performs MCP initialization and lists a returned tool in the panel and D1', async () => {
+  const env = createMockEnv();
+  env.AI_CHAT_DB._addData('mcp_servers', {
+    id: 'mcp-1', name: 'Real protocol', url: 'https://mcp.example.com/mcp', created_at: 1,
+  });
+  const methods: string[] = [];
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url) === 'https://mcp.example.com/mcp') {
+      const rpc = JSON.parse(String(init?.body));
+      methods.push(rpc.method);
+      if (rpc.method === 'notifications/initialized') return new Response(null, { status: 202 });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: rpc.method === 'initialize'
+        ? { protocolVersion: '2025-03-26', capabilities: { tools: {} } }
+        : { tools: [{ name: 'lookup_document', description: 'Find a document', inputSchema: { type: 'object' } }] },
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    return worker.fetch(new Request(new URL(String(url), 'http://localhost'), { ...init,
+      headers: { Authorization: `Basic ${btoa('testuser:testpass')}`, 'Content-Type': 'application/json' },
+    }), env);
+  });
+  render(<Panel />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
+  expect(await screen.findByText('lookup_document')).toBeInTheDocument();
+  expect(screen.queryByText('Connected (no tools available)')).not.toBeInTheDocument();
+  expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/list']);
+  expect(JSON.parse(env.AI_CHAT_DB._getData('mcp_servers')[0].tools_json)).toEqual([
+    { name: 'lookup_document', description: 'Find a document', inputSchema: { type: 'object' }, serverId: 'mcp-1' },
+  ]);
+});

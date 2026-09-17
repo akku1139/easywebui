@@ -8,6 +8,7 @@ vi.mock('../utils/api-client', () => ({
   addMCPServer: vi.fn(),
   updateMCPServer: vi.fn().mockResolvedValue({ ok: true }),
   deleteMCPServer: vi.fn().mockResolvedValue({ ok: true }),
+  connectMCPServer: vi.fn(),
 }));
 
 import * as apiClient from '../utils/api-client';
@@ -61,6 +62,7 @@ describe('MCPPanel', () => {
     vi.clearAllMocks();
     mockAddMCPServer.mockResolvedValue({ id: 'db-generated-id' });
     mockFetchMCPServers.mockResolvedValue([]);
+    vi.mocked(apiClient.connectMCPServer).mockResolvedValue({ status: 'connected', tools: mockServers[0].tools, lastChecked: 1000 });
     // stub global fetch for the OAuth discover call
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
   });
@@ -205,13 +207,34 @@ describe('MCPPanel', () => {
     expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
   });
 
-  it('should connect to server', () => {
+  it('should retrieve tools from the backend instead of simulating an empty connection', async () => {
     render(<MCPPanel {...defaultProps} />);
     
     const connectButton = screen.getByText('Connect');
     fireEvent.click(connectButton);
     
-    expect(defaultProps.onUpdateServers).toHaveBeenCalled();
+    await waitFor(() => expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([
+      expect.objectContaining({ status: 'connected', tools: mockServers[0].tools, lastChecked: 1000 }),
+    ]));
+    expect(apiClient.connectMCPServer).toHaveBeenCalledWith('server-1');
+  });
+
+  it('fetches tools after OAuth completes, rather than only marking connected', async () => {
+    render(<MCPPanel {...defaultProps} />);
+    fireEvent(window, new MessageEvent('message', { origin: window.location.origin,
+      data: { type: 'mcp-oauth-complete', serverId: 'server-1' } }));
+    await waitFor(() => expect(apiClient.connectMCPServer).toHaveBeenCalledWith('server-1'));
+    await waitFor(() => expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([
+      expect.objectContaining({ status: 'connected', tools: mockServers[0].tools }),
+    ]));
+  });
+
+  it('shows connection errors without displaying a fake connected state', async () => {
+    vi.mocked(apiClient.connectMCPServer).mockRejectedValueOnce(new Error('MCP server returned HTTP 503'));
+    render(<MCPPanel {...defaultProps} />);
+    fireEvent.click(screen.getByText('Connect'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 503');
+    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([expect.objectContaining({ status: 'error' })]);
   });
 
   it('should open OAuth modal', () => {
