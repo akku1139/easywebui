@@ -1,5 +1,10 @@
 import { Message, ToolCall, APIConfig } from '../types';
 
+function normalizeApiBaseUrl(baseUrl: string) {
+  const normalized = baseUrl.trim().replace(/\/+$/, '');
+  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
+}
+
 // OpenAI Compatible API client
 export async function chatCompletion(
   config: APIConfig,
@@ -35,7 +40,7 @@ export async function chatCompletion(
     }));
   }
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+  const response = await fetch(`${normalizeApiBaseUrl(config.baseUrl)}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -49,7 +54,7 @@ export async function chatCompletion(
     throw new Error(`API Error: ${response.status} - ${error}`);
   }
 
-  if (onStream) {
+  if (onStream && response.body) {
     return handleStreamResponse(response, onStream);
   }
 
@@ -105,7 +110,7 @@ async function handleStreamResponse(
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         const data = line.slice(6);
-        if (data === '[DONE]') break;
+        if (data === '[DONE]') return { content };
         try {
           const parsed = JSON.parse(data);
           const delta = parsed.choices[0]?.delta;

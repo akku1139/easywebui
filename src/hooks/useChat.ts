@@ -20,9 +20,9 @@ export function useChat(settings: Settings) {
   const activeConversation = conversations.find(c => c.id === activeConversationId) || null;
   
   // Get active endpoint
-  const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId) 
-    || settings.endpoints.find(e => e.isDefault)
-    || settings.endpoints[0];
+  const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId && e.enabled)
+    || settings.endpoints.find(e => e.isDefault && e.enabled)
+    || settings.endpoints.find(e => e.enabled);
 
   const createConversation = useCallback(() => {
     const newConv: Conversation = {
@@ -165,13 +165,14 @@ export function useChat(settings: Settings) {
       const result = await chatCompletion(
         { baseUrl: activeEndpoint.baseUrl, apiKey: activeEndpoint.apiKey, model: activeEndpoint.model },
         allMessages,
-        tools.length > 0 ? tools : undefined
+        tools.length > 0 ? tools : undefined,
+        chunk => setStreamContent(previous => previous + chunk)
       );
 
       const assistantMessage: Message = {
         id: generateId(),
         role: 'assistant',
-        content: result.content || streamContent,
+        content: result.content,
         timestamp: Date.now(),
         model: activeEndpoint.model,
         toolCalls: result.toolCalls,
@@ -220,11 +221,11 @@ export function useChat(settings: Settings) {
     } finally {
       setIsLoading(false);
     }
-  }, [activeConversation, conversations, settings, activeEndpoint, createConversation, buildSystemPrompt, userFacts, streamContent]);
+  }, [activeConversation, conversations, settings, activeEndpoint, createConversation, buildSystemPrompt, userFacts]);
 
   const summarizeAndArchive = useCallback(async (convId: string) => {
     const conv = conversations.find(c => c.id === convId);
-    if (!conv || conv.messages.length === 0) return;
+    if (!conv || conv.messages.length === 0 || !activeEndpoint) return;
 
     try {
       const { title, summary } = await summarizeConversation(

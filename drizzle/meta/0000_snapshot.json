@@ -1,9 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
+  "id": "c427c361-3147-4bd8-b6b4-7344b3a73015",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "user_facts": {
-      "name": "user_facts",
+    "api_endpoints": {
+      "name": "api_endpoints",
       "columns": {
         "id": {
           "name": "id",
@@ -12,28 +14,49 @@
           "notNull": true,
           "autoincrement": false
         },
-        "content": {
-          "name": "content",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "category": {
-          "name": "category",
+        "base_url": {
+          "name": "base_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'other'"
+          "autoincrement": false
         },
-        "source": {
-          "name": "source",
+        "api_key": {
+          "name": "api_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
           "autoincrement": false,
-          "default": "'explicit'"
+          "default": true
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -41,30 +64,13 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_user_facts_category": {
-          "name": "idx_user_facts_category",
-          "columns": ["category"],
-          "isUnique": false
-        },
-        "idx_user_facts_updated": {
-          "name": "idx_user_facts_updated",
-          "columns": ["updated_at"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "conversation_summaries": {
       "name": "conversation_summaries",
@@ -113,16 +119,11 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_conversation_summaries_created": {
-          "name": "idx_conversation_summaries_created",
-          "columns": ["created_at"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "conversations": {
       "name": "conversations",
@@ -180,21 +181,11 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_conversations_pinned": {
-          "name": "idx_conversations_pinned",
-          "columns": ["pinned"],
-          "isUnique": false
-        },
-        "idx_conversations_updated": {
-          "name": "idx_conversations_updated",
-          "columns": ["updated_at"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "mcp_servers": {
       "name": "mcp_servers",
@@ -294,6 +285,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "oauth_registration_endpoint": {
+          "name": "oauth_registration_endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "oauth_access_token": {
           "name": "oauth_access_token",
           "type": "text",
@@ -323,19 +321,14 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_mcp_servers_enabled": {
-          "name": "idx_mcp_servers_enabled",
-          "columns": ["enabled"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
-    "api_endpoints": {
-      "name": "api_endpoints",
+    "memory_extraction_log": {
+      "name": "memory_extraction_log",
       "columns": {
         "id": {
           "name": "id",
@@ -344,49 +337,20 @@
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "base_url": {
-          "name": "base_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "api_key": {
-          "name": "api_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
+        "facts_extracted": {
+          "name": "facts_extracted",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": true
-        },
-        "is_default": {
-          "name": "is_default",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -396,21 +360,63 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_api_endpoints_enabled": {
-          "name": "idx_api_endpoints_enabled",
-          "columns": ["enabled"],
-          "isUnique": false
-        },
-        "idx_api_endpoints_default": {
-          "name": "idx_api_endpoints_default",
-          "columns": ["is_default"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "oauth_states": {
+      "name": "oauth_states",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_id": {
+          "name": "server_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code_verifier": {
+          "name": "code_verifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "sessions": {
       "name": "sessions",
@@ -465,19 +471,14 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_sessions_expires_at": {
-          "name": "idx_sessions_expires_at",
-          "columns": ["expires_at"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
-    "memory_extraction_log": {
-      "name": "memory_extraction_log",
+    "settings": {
+      "name": "settings",
       "columns": {
         "id": {
           "name": "id",
@@ -486,20 +487,51 @@
           "notNull": true,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "endpoints_json": {
+          "name": "endpoints_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "active_endpoint_id": {
+          "name": "active_endpoint_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
-        "facts_extracted": {
-          "name": "facts_extracted",
+        "memory_enabled": {
+          "name": "memory_enabled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": true
+        },
+        "auto_memory": {
+          "name": "auto_memory",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "theme": {
+          "name": "theme",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'system'"
+        },
+        "custom_system_prompt": {
+          "name": "custom_system_prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -507,21 +539,23 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_memory_extraction_log_conversation": {
-          "name": "idx_memory_extraction_log_conversation",
-          "columns": ["conversation_id"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
-    "oauth_states": {
-      "name": "oauth_states",
+    "user_facts": {
+      "name": "user_facts",
       "columns": {
         "id": {
           "name": "id",
@@ -530,26 +564,28 @@
           "notNull": true,
           "autoincrement": false
         },
-        "server_id": {
-          "name": "server_id",
+        "content": {
+          "name": "content",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "state": {
-          "name": "state",
+        "category": {
+          "name": "category",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "'other'"
         },
-        "code_verifier": {
-          "name": "code_verifier",
+        "source": {
+          "name": "source",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "'explicit'"
         },
         "created_at": {
           "name": "created_at",
@@ -558,31 +594,22 @@
           "notNull": true,
           "autoincrement": false
         },
-        "expires_at": {
-          "name": "expires_at",
+        "updated_at": {
+          "name": "updated_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         }
       },
-      "indexes": {
-        "idx_oauth_states_server": {
-          "name": "idx_oauth_states_server",
-          "columns": ["server_id"],
-          "isUnique": false
-        },
-        "idx_oauth_states_expires": {
-          "name": "idx_oauth_states_expires",
-          "columns": ["expires_at"],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
+  "views": {},
   "enums": {},
   "_meta": {
     "schemas": {},

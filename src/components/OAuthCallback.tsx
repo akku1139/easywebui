@@ -34,13 +34,17 @@ export default function OAuthCallback() {
         });
 
         if (response.ok) {
+          const data = await response.json() as { serverId?: string };
+          window.opener?.postMessage(
+            { type: 'mcp-oauth-complete', serverId: data.serverId },
+            window.location.origin
+          );
           setStatus('success');
-          setMessage('OAuth authentication successful! Redirecting...');
-          
-          // Redirect to home after 2 seconds
+          setMessage('OAuth authentication successful! You can close this window.');
           setTimeout(() => {
+            window.close();
             navigate('/');
-          }, 2000);
+          }, 1200);
         } else {
           const data = await response.json() as { error?: string };
           setStatus('error');

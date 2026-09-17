@@ -63,8 +63,8 @@ export default function MemoryPanel({ facts, summaries, onAddFact, onRemoveFact,
         {/* Info Banner */}
         <div className="mx-5 mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
           <p className="text-xs text-blue-300">
-            <strong>Memory Architecture:</strong> Based on ChatGPT's 4-layer approach — 
-            ① Session Metadata ② User Facts (this panel) ③ Conversation Summaries ④ Current Session.
+            <strong>Memory Architecture:</strong> Based on ChatGPT's 4-layer approach —
+            ① Session Metadata ② User Facts (this panel) ③ Conversation history ④ Current Session.
             Facts are auto-detected from conversations or manually added.
           </p>
         </div>
@@ -153,6 +153,7 @@ export default function MemoryPanel({ facts, summaries, onAddFact, onRemoveFact,
                           {fact.source === 'auto_detected' ? '🤖' : '✏️'}
                         </span>
                         <button
+                          aria-label="Remove fact"
                           onClick={() => onRemoveFact(fact.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-400 transition"
                         >

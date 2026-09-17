@@ -11,10 +11,10 @@ export function createMockDB() {
 
   return {
     prepare: (query: string) => {
-      const tableName = query.match(/FROM\s+(\w+)/i)?.[1] || 
-                       query.match(/INTO\s+(\w+)/i)?.[1] ||
-                       query.match(/UPDATE\s+(\w+)/i)?.[1] ||
-                       query.match(/DELETE\s+FROM\s+(\w+)/i)?.[1];
+      const tableName = query.match(/FROM\s+"?(\w+)"?/i)?.[1] ||
+                       query.match(/INTO\s+"?(\w+)"?/i)?.[1] ||
+                       query.match(/UPDATE\s+"?(\w+)"?/i)?.[1] ||
+                       query.match(/DELETE\s+FROM\s+"?(\w+)"?/i)?.[1];
       
       let bindValues: any[] = [];
       
@@ -30,6 +30,7 @@ export function createMockDB() {
               if (!tableName || !data[tableName]) return { results: [] };
               return { results: data[tableName] };
             },
+            raw: async () => data[tableName] || [],
             run: async () => {
               if (!tableName) return;
               
@@ -105,6 +106,7 @@ export function createMockDB() {
           if (!tableName || !data[tableName]) return { results: [] };
           return { results: data[tableName] };
         },
+        raw: async () => data[tableName] || [],
         run: async () => {
           // Handle UPDATE without bind (like "UPDATE api_endpoints SET is_default = 0")
           if (tableName && query.toUpperCase().includes('UPDATE') && !query.toUpperCase().includes('WHERE')) {

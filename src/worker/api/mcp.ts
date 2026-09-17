@@ -10,7 +10,21 @@ export async function handleMCPServers(c: Context<{ Bindings: Env }>) {
   
   if (method === 'GET') {
     const servers = await db.select().from(mcpServers).orderBy(desc(mcpServers.createdAt));
-    return c.json(servers);
+    return c.json(servers.map(server => ({
+      id: server.id,
+      name: server.name,
+      url: server.url,
+      enabled: server.enabled,
+      tools: JSON.parse(server.toolsJson || '[]'),
+      status: server.status,
+      lastChecked: server.lastChecked,
+      oauthEnabled: server.oauthEnabled,
+      oauthClientId: server.oauthClientId,
+      oauthTokenEndpoint: server.oauthTokenEndpoint,
+      oauthAuthEndpoint: server.oauthAuthEndpoint,
+      oauthRegistrationEndpoint: server.oauthRegistrationEndpoint,
+      oauthScopes: server.oauthScopes,
+    })));
   }
   
   if (method === 'POST') {
@@ -161,7 +175,7 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
       expiresAt,
     });
     
-    const finalRedirectUri = redirectUri || `${new URL(c.req.url).origin}/mcp-oauth-callback`;
+    const finalRedirectUri = redirectUri || `${new URL(c.req.url).origin}/oauth-callback`;
     const authUrl = buildAuthorizationUrl(
       server.oauthAuthEndpoint!,
       server.oauthClientId!,
@@ -176,9 +190,14 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
   
   if (path === '/api/mcp-oauth/callback') {
     const url = new URL(c.req.url);
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-    
+    let code = url.searchParams.get('code');
+    let state = url.searchParams.get('state');
+    if (c.req.method === 'POST' && (!code || !state)) {
+      const body = await c.req.json<{ code?: string; state?: string }>();
+      code = body.code || null;
+      state = body.state || null;
+    }
+
     if (!code || !state) {
       return c.json({ error: 'Missing code or state' }, 400);
     }
@@ -226,12 +245,14 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
         oauthRefreshToken: tokens.refresh_token || null,
         oauthTokenExpiresAt: expiresAt,
         oauthScopes: tokens.scope || null,
+        status: 'connected',
+        lastChecked: now,
       })
       .where(eq(mcpServers.id, stateData.serverId));
     
-    return c.json({ success: true });
+    return c.json({ success: true, serverId: stateData.serverId });
   }
-  
+
   if (path === '/api/mcp-oauth/discover') {
     const body = await c.req.json();
     const { serverUrl } = body;

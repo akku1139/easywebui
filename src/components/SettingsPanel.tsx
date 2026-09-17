@@ -15,9 +15,20 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
   const [editingEndpoint, setEditingEndpoint] = useState<APIEndpoint | null>(null);
   const [showAddEndpoint, setShowAddEndpoint] = useState(false);
 
+  const updateImmediateSettings = (updates: Partial<Settings>) => {
+    const updated = { ...local, ...updates };
+    setLocal(updated);
+    onUpdate(updated);
+  };
+
   const handleSave = () => {
     onUpdate(local);
     saveSettings(local);
+    onClose();
+  };
+
+  const handleCancel = () => {
+    onUpdate(settings);
     onClose();
   };
 
@@ -27,7 +38,10 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
       id: generateId(),
       createdAt: Date.now(),
     };
-    const updatedEndpoints = [...local.endpoints, newEndpoint];
+    const updatedEndpoints = [...local.endpoints, newEndpoint].map(endpoint => ({
+      ...endpoint,
+      isDefault: endpoint.id === newEndpoint.id ? newEndpoint.isDefault : newEndpoint.isDefault ? false : endpoint.isDefault,
+    }));
     const updatedSettings = {
       ...local,
       endpoints: updatedEndpoints,
@@ -38,9 +52,10 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
   };
 
   const updateEndpoint = (id: string, updates: Partial<APIEndpoint>) => {
-    const updatedEndpoints = local.endpoints.map(e => 
-      e.id === id ? { ...e, ...updates } : e
-    );
+    const updatedEndpoints = local.endpoints.map(e => {
+      if (e.id === id) return { ...e, ...updates };
+      return updates.isDefault ? { ...e, isDefault: false } : e;
+    });
     setLocal({ ...local, endpoints: updatedEndpoints });
     setEditingEndpoint(null);
   };
@@ -188,8 +203,8 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
                     <div className={`text-xs space-y-1 ${
                       isDark ? 'text-gray-400' : 'text-gray-600'
                     }`}>
-                      <div>URL: {endpoint.baseUrl || '(not set)'}</div>
-                      <div>Model: {endpoint.model}</div>
+                      <div><span>URL:</span> <span>{endpoint.baseUrl || '(not set)'}</span></div>
+                      <div><span>Model:</span> <span>{endpoint.model}</span></div>
                     </div>
                   </div>
                 ))}
@@ -210,8 +225,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Enable Memory"
                 checked={local.memoryEnabled}
-                onChange={e => setLocal({ ...local, memoryEnabled: e.target.checked })}
+                onChange={e => updateImmediateSettings({ memoryEnabled: e.target.checked })}
                 className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
                   isDark 
                     ? 'bg-gray-700 border-gray-600' 
@@ -230,8 +246,9 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Auto-detect Facts"
                 checked={local.autoMemory}
-                onChange={e => setLocal({ ...local, autoMemory: e.target.checked })}
+                onChange={e => updateImmediateSettings({ autoMemory: e.target.checked })}
                 className={`w-4 h-4 rounded border text-blue-500 focus:ring-blue-500 ${
                   isDark 
                     ? 'bg-gray-700 border-gray-600' 
@@ -291,7 +308,7 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
             </h3>
             <div className="grid grid-cols-3 gap-3">
               <button
-                onClick={() => setLocal({ ...local, theme: 'light' })}
+                onClick={() => updateImmediateSettings({ theme: 'light' })}
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'light'
                     ? 'border-blue-500 bg-blue-500/10'
@@ -308,7 +325,7 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
                 </div>
               </button>
               <button
-                onClick={() => setLocal({ ...local, theme: 'dark' })}
+                onClick={() => updateImmediateSettings({ theme: 'dark' })}
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'dark'
                     ? 'border-blue-500 bg-blue-500/10'
@@ -325,7 +342,7 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
                 </div>
               </button>
               <button
-                onClick={() => setLocal({ ...local, theme: 'system' })}
+                onClick={() => updateImmediateSettings({ theme: 'system' })}
                 className={`px-4 py-3 rounded-lg border-2 transition ${
                   local.theme === 'system'
                     ? 'border-blue-500 bg-blue-500/10'
@@ -350,7 +367,7 @@ export default function SettingsPanel({ settings, onUpdate, onClose, theme }: Pr
           isDark ? 'border-gray-700' : 'border-gray-300'
         }`}>
           <button
-            onClick={onClose}
+            onClick={handleCancel}
             className={`px-4 py-2 text-sm transition ${
               isDark 
                 ? 'text-gray-400 hover:text-white' 

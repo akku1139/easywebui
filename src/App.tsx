@@ -30,6 +30,7 @@ function ChatApp() {
   const { auth } = useAuth();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activePanel, setActivePanel] = useState<Panel>('none');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatError, setChatError] = useState('');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
 
@@ -104,7 +105,12 @@ function ChatApp() {
         conversations={chat.conversations}
         activeId={chat.activeConversationId}
         theme={resolvedTheme}
-        onSelect={chat.setActiveConversationId}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onSelect={(conversationId) => {
+          chat.setActiveConversationId(conversationId);
+          setSidebarOpen(false);
+        }}
         onNew={chat.createConversation}
         onDelete={chat.deleteConversation}
         onTogglePin={chat.togglePin}
@@ -113,18 +119,37 @@ function ChatApp() {
         onOpenMCP={() => setActivePanel('mcp')}
       />
 
+      {sidebarOpen && (
+        <button
+          aria-label="Close navigation"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+        />
+      )}
+
       {/* Main Chat Area */}
-      <main className={`flex-1 flex flex-col h-full ${
+      <main className={`min-w-0 flex-1 flex flex-col h-full ${
         resolvedTheme === 'dark' ? 'bg-gray-900' : 'bg-white'
       }`}>
         {/* Top Bar */}
-        <header className={`h-14 border-b flex items-center justify-between px-4 shrink-0 ${
+        <header className={`min-w-0 h-14 border-b flex items-center justify-between gap-3 px-4 shrink-0 ${
           resolvedTheme === 'dark' 
             ? 'border-gray-700' 
             : 'border-gray-200'
         }`}>
-          <div className="flex items-center gap-3">
-            <h1 className={`text-sm font-medium ${
+          <div className="min-w-0 flex items-center gap-3">
+            <button
+              aria-label="Open navigation"
+              onClick={() => setSidebarOpen(true)}
+              className={`p-1.5 rounded-lg md:hidden ${
+                resolvedTheme === 'dark' ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className={`min-w-0 truncate text-sm font-medium ${
               resolvedTheme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}>
               {chat.activeConversation?.title || 'AI Chat'}
@@ -155,11 +180,11 @@ function ChatApp() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="min-w-0 flex items-center justify-end gap-2">
             {(() => {
-              const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId) 
-                || settings.endpoints.find(e => e.isDefault)
-                || settings.endpoints[0];
+              const activeEndpoint = settings.endpoints.find(e => e.id === settings.activeEndpointId && e.enabled)
+                || settings.endpoints.find(e => e.isDefault && e.enabled)
+                || settings.endpoints.find(e => e.enabled);
               return (
                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
                   resolvedTheme === 'dark' 
@@ -169,7 +194,7 @@ function ChatApp() {
                   <div className={`w-2 h-2 rounded-full ${
                     activeEndpoint?.baseUrl ? 'bg-green-400' : 'bg-red-400'
                   }`} />
-                  <span className={`text-xs ${
+                  <span className={`max-w-[12rem] truncate text-xs ${
                     resolvedTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'
                   }`}>
                     {activeEndpoint ? `${activeEndpoint.name} (${activeEndpoint.model})` : 'No endpoint'}
@@ -178,14 +203,14 @@ function ChatApp() {
               );
             })()}
             {settings.memoryEnabled && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                <span className="text-xs text-amber-400">🧠 Memory ON</span>
+              <div className="hidden items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 sm:flex">
+                <span className="text-xs text-amber-400">Memory on</span>
               </div>
             )}
             {settings.mcpServers.filter(s => s.enabled && s.status === 'connected').length > 0 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-500/10 rounded-lg border border-purple-500/20">
+              <div className="hidden items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-500/10 px-2.5 py-1 sm:flex">
                 <span className="text-xs text-purple-400">
-                  ⚡ {settings.mcpServers.filter(s => s.enabled && s.status === 'connected').length} MCP
+                  {settings.mcpServers.filter(s => s.enabled && s.status === 'connected').length} MCP
                 </span>
               </div>
             )}
