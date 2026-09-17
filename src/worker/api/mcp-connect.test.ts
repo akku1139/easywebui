@@ -64,6 +64,13 @@ describe('POST /api/mcp-servers/connect', () => {
     expect(await response.json()).toMatchObject({ status: 'connected', tools: [] });
   });
 
+  it('reports a redirecting MCP endpoint instead of following or crashing', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 302, headers: { Location: 'https://sso.example.com/login' } }));
+    const response = await connect();
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('redirected') });
+  });
+
   it('reports upstream failures instead of claiming connected with zero tools', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('Unavailable', { status: 503 }));
     const response = await connect();

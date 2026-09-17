@@ -102,9 +102,17 @@ export async function handleMCPConnect(c: Context<{ Bindings: Env }>) {
       if (version) headers['MCP-Protocol-Version'] = version;
       if (server.oauth_access_token) headers.Authorization = `Bearer ${server.oauth_access_token}`;
       const response = await fetch(url.toString(), {
-        method: 'POST', headers, redirect: 'error', signal: controller.signal,
+        method: 'POST', headers,
+        // Workers' fetch rejects redirect:"error"; use "manual" so an MCP
+        // endpoint that redirects to an HTML login page is a visible error
+        // instead of silently following it.
+        redirect: 'manual', signal: controller.signal,
         body: JSON.stringify({ jsonrpc: '2.0', ...(notification ? {} : { id: requestId }), method, ...(params === undefined ? {} : { params }) }),
       });
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel();
+        throw new MCPError(`MCP endpoint redirected (HTTP ${response.status} to ${response.headers.get('Location') ?? 'unknown'}) — the URL may be wrong or the session expired. Open the URL directly to check.`);
+      }
       if (!response.ok) {
         const body = (await response.text().catch(() => '')).slice(0, 300);
         if (response.status === 405) {
