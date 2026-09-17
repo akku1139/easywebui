@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MCPServer, MCPTool, Settings } from '../types';
 import * as apiClient from '../utils/api-client';
 
@@ -15,20 +15,54 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
   const isDark = theme === 'dark';
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
+  const [addError, setAddError] = useState('');
+  const [oauthServerId, setOauthServerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOAuthComplete = (event: MessageEvent<{ type?: string; serverId?: string }>) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'mcp-oauth-complete') return;
+      const serverId = event.data.serverId;
+      if (!serverId || !servers.some(server => server.id === serverId)) return;
+      const updatedServers = servers.map(server => (
+        server.id === serverId
+          ? { ...server, status: 'connected' as const, lastChecked: Date.now() }
+          : server
+      ));
+      onUpdateServers(updatedServers);
+      apiClient.updateMCPServer(serverId, { status: 'connected' }).catch(() => {});
+    };
+
+    window.addEventListener('message', handleOAuthComplete);
+    return () => window.removeEventListener('message', handleOAuthComplete);
+  }, [servers, onUpdateServers]);
 
   const addServer = async () => {
-    if (!newUrl.trim()) return;
-    
+    const url = newUrl.trim();
+    if (!url) return;
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Unsupported protocol');
+    } catch {
+      setAddError('Enter a valid HTTP or HTTPS URL.');
+      return;
+    }
+
+    setAddError('');
     const server: MCPServer = {
       id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-      name: newName.trim() || new URL(newUrl).hostname,
-      url: newUrl.trim(),
+      name: newName.trim() || parsedUrl.hostname,
+      url,
       enabled: true,
       tools: [],
       status: 'disconnected',
       oauthEnabled: false,
     };
-    
+    onUpdateServers([...servers, server]);
+    setNewUrl('');
+    setNewName('');
+
     // Auto-detect OAuth metadata
     try {
       const response = await fetch('/api/mcp-oauth/discover', {
@@ -62,8 +96,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
     }
     
     onUpdateServers([...servers, server]);
-    setNewUrl('');
-    setNewName('');
   };
 
   const removeServer = (id: string) => {
@@ -142,11 +174,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
   const mockConnect = async (id: string) => {
     const server = servers.find(s => s.id === id);
     if (!server) return;
-
-    // If already connected, don't reconnect
-    if (server.status === 'connected') {
-      return;
-    }
 
     // If OAuth is enabled but not authenticated, start OAuth flow
     if (server.oauthEnabled && !server.oauthAccessToken) {
@@ -244,6 +271,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
               Add
             </button>
           </div>
+          {addError && <p className="mt-2 text-xs text-red-400">{addError}</p>}
         </div>
 
         {/* Server List */}
@@ -259,25 +287,44 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
               }`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2.5 h-2.5 rounded-full ${statusColors[server.status]}`} />
-                    <div>
-                      <h4 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{server.name}</h4>
-                      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{server.url}</p>
-                    </div>
-                  </div>
+            <div
+              aria-label={statusLabels[server.status]}
+              className={`h-2.5 w-2.5 rounded-full ${statusColors[server.status]}`}
+            />
+            <div className="min-w-0">
+              <h4 className={`truncate text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{server.name}</h4>
+              <div>
+                <p className={`truncate text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{server.url}</p>
+              </div>
+            </div>
+          </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => mockConnect(server.id)}
                       className={`px-3 py-1 text-xs rounded-md transition ${
-                        isDark 
-                          ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                        isDark
+                          ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
                       Connect
                     </button>
+                    <button
+                      onClick={() => setOauthServerId(server.id)}
+                      className={`px-3 py-1 text-xs rounded-md transition ${
+                        isDark
+                          ? 'bg-purple-500/15 text-purple-300 hover:bg-purple-500/25'
+                          : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                      }`}
+                    >
+                      🔐 OAuth
+                    </button>
 
                     <button
+                      type="button"
+                      role="switch"
+                      aria-label={`Toggle ${server.name}`}
+                      aria-checked={server.enabled}
                       onClick={() => toggleServer(server.id)}
                       className={`relative w-10 h-5 rounded-full transition ${
                         server.enabled ? 'bg-purple-500' : 'bg-gray-600'
@@ -288,6 +335,8 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
                       }`} />
                     </button>
                     <button
+                      type="button"
+                      title="Remove server"
                       onClick={() => removeServer(server.id)}
                       className={`p-1 transition ${
                         isDark 
@@ -306,7 +355,7 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
                   {server.status === 'connected' && server.tools.length > 0 && (
                     <div className="space-y-1.5">
                       <p className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                        Available Tools ({server.tools.length}):
+                        <span>Available Tools:</span> <span>({server.tools.length})</span>
                       </p>
                       {server.tools.map(tool => (
                         <div key={tool.name} className="flex items-start gap-2 pl-2">
@@ -357,8 +406,44 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
         </div>
       </div>
 
+      {oauthServerId && (() => {
+        const oauthServer = servers.find(server => server.id === oauthServerId);
+        if (!oauthServer) return null;
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+            <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+              isDark ? 'border-gray-700 bg-gray-800' : 'border-gray-300 bg-white'
+            }`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    OAuth 2.1 Configuration
+                  </h3>
+                  <p className={`mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {oauthServer.name}
+                  </p>
+                </div>
+                <button
+                  aria-label="Close OAuth configuration"
+                  onClick={() => setOauthServerId(null)}
+                  className={`text-lg leading-none ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  ×
+                </button>
+              </div>
+              <p className={`mt-4 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                OAuth metadata is detected automatically when the server is added. Use Connect to start the PKCE flow when authentication is available.
+              </p>
+              <button
+                onClick={() => setOauthServerId(null)}
+                className="mt-5 w-full rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-600"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
-
-

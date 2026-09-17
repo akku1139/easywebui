@@ -37,6 +37,16 @@ export async function handleConversations(c: Context<{ Bindings: Env }>) {
     return c.json({ id, ...body });
   }
   
+  if (method === 'DELETE') {
+    const id = new URL(c.req.url).searchParams.get('id');
+    if (!id) {
+      return c.json({ error: 'Missing conversation ID' }, 400);
+    }
+
+    await db.delete(conversations).where(eq(conversations.id, id));
+    return c.json({ ok: true });
+  }
+
   if (method === 'PATCH') {
     const id = new URL(c.req.url).searchParams.get('id');
     if (!id) {

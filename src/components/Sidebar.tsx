@@ -11,11 +11,13 @@ interface Props {
   onOpenSettings: () => void;
   onOpenMemory: () => void;
   onOpenMCP: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export default function Sidebar({
   conversations, activeId, theme, onSelect, onNew, onDelete, onTogglePin,
-  onOpenSettings, onOpenMemory, onOpenMCP
+  onOpenSettings, onOpenMemory, onOpenMCP, isOpen = true, onClose
 }: Props) {
   // Sort conversations: pinned first, then by updatedAt descending
   const sortedConversations = [...conversations].sort((a, b) => {
@@ -30,9 +32,11 @@ export default function Sidebar({
   const isDark = theme === 'dark';
   
   return (
-    <div className={`w-72 h-full flex flex-col ${
-      isDark 
-        ? 'bg-gray-900 border-gray-700' 
+    <div className={`w-72 h-full shrink-0 flex flex-col transition-transform duration-200 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[min(18rem,calc(100vw-3rem))] max-md:shadow-2xl ${
+      isOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
+    } ${
+      isDark
+        ? 'bg-gray-900 border-gray-700'
         : 'bg-white border-gray-200'
     } border-r`}>
       {/* Header */}
@@ -45,6 +49,14 @@ export default function Sidebar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           New Chat
+        </button>
+        <button
+          onClick={onClose}
+          className={`mt-2 w-full md:hidden flex items-center justify-center gap-2 py-2 text-xs rounded-lg transition ${
+            isDark ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          }`}
+        >
+          Close menu
         </button>
       </div>
 
@@ -98,10 +110,12 @@ export default function Sidebar({
       </div>
 
       {/* Footer Navigation */}
-      <div className="p-3 border-t border-gray-700 space-y-1">
+      <div className={`p-3 border-t space-y-1 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
         <button
-          onClick={onOpenMemory}
-          className="w-full flex items-center gap-3 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition text-sm"
+          onClick={() => { onOpenMemory(); onClose?.(); }}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm ${
+          isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+        }`}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -109,8 +123,10 @@ export default function Sidebar({
           Memory
         </button>
         <button
-          onClick={onOpenMCP}
-          className="w-full flex items-center gap-3 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition text-sm"
+          onClick={() => { onOpenMCP(); onClose?.(); }}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm ${
+          isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+        }`}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -118,8 +134,10 @@ export default function Sidebar({
           MCP Servers
         </button>
         <button
-          onClick={onOpenSettings}
-          className="w-full flex items-center gap-3 px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition text-sm"
+          onClick={() => { onOpenSettings(); onClose?.(); }}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm ${
+          isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+        }`}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />

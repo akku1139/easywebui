@@ -58,8 +58,11 @@ export async function chatCompletion(c: Context<{ Bindings: Env }>) {
     }
   }
   
-  // Proxy to OpenAI
-  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  const apiBaseUrl = normalizedBaseUrl.endsWith('/v1')
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/v1`;
+  const response = await fetch(`${apiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -69,11 +72,10 @@ export async function chatCompletion(c: Context<{ Bindings: Env }>) {
   });
   
   // Auto-extract memory (non-blocking)
-  if (!stream) {
-    const responseClone = response.clone();
-    const data = await responseClone.json() as any;
-    const assistantContent = data.choices?.[0]?.message?.content;
-    
+  if (!stream && response.ok) {
+    const data = await response.clone().json().catch(() => null) as any;
+    const assistantContent = data?.choices?.[0]?.message?.content;
+
     if (assistantContent && messages.length > 2) {
       extractAndStoreFacts(c.env, messages, assistantContent).catch(() => {});
     }
@@ -99,8 +101,9 @@ async function extractAndStoreFacts(
 User said: ${userMessages.slice(0, 2000)}
 Assistant responded: ${assistantResponse.slice(0, 1000)}`;
 
-  const baseUrl = env.OPENAI_BASE_URL || 'https://api.openai.com';
-  const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+  const baseUrl = (env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '');
+  const apiBaseUrl = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+  const response = await fetch(`${apiBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

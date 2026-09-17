@@ -57,6 +57,7 @@ app.post('/api/memory/summaries', handleSummaries);
 app.get('/api/conversations', handleConversations);
 app.post('/api/conversations', handleConversations);
 app.patch('/api/conversations', handleConversations);
+app.delete('/api/conversations', handleConversations);
 
 // MCP
 app.get('/api/mcp-servers', handleMCPServers);
