@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
+import { MarkdownContent } from './MarkdownContent';
 
 interface Props {
   messages: Message[];
@@ -82,9 +83,10 @@ export default function ChatView({ messages, isLoading, streamContent, onSend, e
               <div className={`flex-1 rounded-2xl rounded-tl-sm px-4 py-3 ${
                 isDark ? 'bg-gray-800/50' : 'bg-gray-100'
               }`}>
-                <p className={`whitespace-pre-wrap text-sm leading-relaxed ${
-                  isDark ? 'text-gray-200' : 'text-gray-800'
-                }`}>{streamContent}</p>
+                <MarkdownContent
+                  content={streamContent}
+                  className={`text-sm leading-relaxed ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+                />
                 <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5" />
               </div>
             </div>
@@ -210,9 +212,11 @@ function MessageBubble({ message, isDark }: { message: Message; isDark: boolean 
               ? 'bg-gray-800/50 rounded-tl-sm'
               : 'bg-gray-100 rounded-tl-sm'
         }`}>
-          <p className={`whitespace-pre-wrap text-sm leading-relaxed ${
-            isDark ? 'text-gray-200' : 'text-gray-800'
-          }`}>{message.content}</p>
+          <MarkdownContent
+            content={message.content}
+            mode={isUser ? 'plain' : 'markdown'}
+            className={`text-sm leading-relaxed ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+          />
         </div>
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">

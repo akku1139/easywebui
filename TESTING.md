@@ -226,3 +226,13 @@ npx vitest run --inspect-brk
 - [ ] 負荷テスト（並列リクエスト）
 - [ ] セキュリティテスト（認証回避）
 - [ ] アクセシビリティテスト
+# MCP / Markdown 回帰テスト
+
+- `src/worker/api/mcp-registration.test.ts`: サーバー作成で返るIDがDBのIDと一致し、そのIDでOAuth登録が成功することをHonoルーター経由で検証。
+- `src/worker/api/mcp-oauth-regression.test.ts`: callbackのserverId、既存クエリ付き認可URL、トークン有効期限の単位を検証。
+- `src/worker/test-helpers.test.ts`: D1モックの列順・WHERE条件・更新対象を検証（本物のD1を代替する完全なSQLエンジンではありません）。
+- `src/components/ChatView.test.tsx` / `MarkdownContent.test.tsx` / `src/utils/markdown.test.ts`: 完成済み・生成途中のMarkdown、未閉じコードフェンスから完成への更新、HTMLのテキスト表示を検証。
+
+Markdownはteapotの`frontend/md.js`を参考にした軽量実装です。CommonMarkの完全実装やシンタックスハイライトは含みません。
+
+MCPの古いローカルIDは、同じURLのDBレコードが一意の場合にパネルを開くと補正されます。DBにないサーバーや同じURLが複数ある場合は自動推測せず、削除・再追加が必要です。

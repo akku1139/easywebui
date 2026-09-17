@@ -457,7 +457,7 @@ describe('MCP OAuth API', () => {
       expect(res.status).toBe(400);
     });
 
-    it('should return 404 for expired state', async () => {
+    it('should return 400 for expired state', async () => {
       const db = env.AI_CHAT_DB as any;
       db._addData('oauth_states', {
         id: 'state-1',
@@ -479,7 +479,7 @@ describe('MCP OAuth API', () => {
 
       const res = await app.fetch(req, env);
       
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(400);
     });
 
     it('should delete state after use', async () => {

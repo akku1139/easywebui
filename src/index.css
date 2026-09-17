@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+/* Markdown rendering (assistant messages + live stream) */
+.markdown-body :where(p) { margin: 0 0 0.5rem; }
+.markdown-body :where(p:last-child) { margin-bottom: 0; }
+.markdown-body :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0.75rem 0 0.4rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.markdown-body :where(h1) { font-size: 1.25rem; }
+.markdown-body :where(h2) { font-size: 1.15rem; }
+.markdown-body :where(h3) { font-size: 1.1rem; }
+.markdown-body :where(h4, h5, h6) { font-size: 1rem; }
+.markdown-body :where(ul, ol) { margin: 0.25rem 0 0.5rem 1.25rem; }
+.markdown-body :where(ul) { list-style: disc; }
+.markdown-body :where(ol) { list-style: decimal; }
+.markdown-body :where(li) { margin: 0.15rem 0; }
+.markdown-body :where(blockquote) {
+  border-left: 3px solid rgba(148, 163, 184, 0.6);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  opacity: 0.9;
+}
+.markdown-body :where(pre) {
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.markdown-body :where(:not(pre) > code) {
+  background: rgba(100, 116, 139, 0.25);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+.markdown-body :where(a) { color: #60a5fa; text-decoration: underline; }
+.markdown-body :where(img) { max-width: 100%; border-radius: 0.5rem; }
+.markdown-body :where(hr) { border-color: rgba(148, 163, 184, 0.4); margin: 0.75rem 0; }
+.markdown-body :where(.tbl) { overflow-x: auto; margin: 0.5rem 0; }
+.markdown-body :where(table) { border-collapse: collapse; font-size: 0.85rem; }
+.markdown-body :where(th, td) { border: 1px solid rgba(148, 163, 184, 0.4); padding: 0.3rem 0.6rem; }
+.markdown-body :where(input[type="checkbox"]) { margin-right: 0.35rem; }

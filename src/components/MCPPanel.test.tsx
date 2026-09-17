@@ -1,7 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import MCPPanel from './MCPPanel';
 import { MCPServer, Settings } from '../types';
+
+vi.mock('../utils/api-client', () => ({
+  fetchMCPServers: vi.fn().mockResolvedValue([]),
+  addMCPServer: vi.fn(),
+  updateMCPServer: vi.fn().mockResolvedValue({ ok: true }),
+  deleteMCPServer: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
+import * as apiClient from '../utils/api-client';
+
+const mockAddMCPServer = vi.mocked(apiClient.addMCPServer);
+const mockFetchMCPServers = vi.mocked(apiClient.fetchMCPServers);
+const mockUpdateMCPServer = vi.mocked(apiClient.updateMCPServer);
+const mockDeleteMCPServer = vi.mocked(apiClient.deleteMCPServer);
 
 describe('MCPPanel', () => {
   const mockServers: MCPServer[] = [
@@ -43,6 +57,18 @@ describe('MCPPanel', () => {
     onUpdateSettings: vi.fn(),
   };
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAddMCPServer.mockResolvedValue({ id: 'db-generated-id' });
+    mockFetchMCPServers.mockResolvedValue([]);
+    // stub global fetch for the OAuth discover call
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('should render MCP panel with title', () => {
     render(<MCPPanel {...defaultProps} />);
     
@@ -63,7 +89,7 @@ describe('MCPPanel', () => {
     expect(screen.getByText(/No MCP servers configured/)).toBeInTheDocument();
   });
 
-  it('should add new server', () => {
+  it('should add new server', async () => {
     render(<MCPPanel {...defaultProps} />);
     
     const nameInput = screen.getByPlaceholderText('Server name (optional)');
@@ -75,7 +101,56 @@ describe('MCPPanel', () => {
     const addButton = screen.getByText('Add');
     fireEvent.click(addButton);
     
-    expect(defaultProps.onUpdateServers).toHaveBeenCalled();
+    await waitFor(() => expect(defaultProps.onUpdateServers).toHaveBeenCalled());
+    // Canonical DB id must be adopted, not the locally generated one.
+    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'db-generated-id', url: 'http://localhost:3002' }),
+      ])
+    );
+    // Publish exactly once, after persistence — not before.
+    expect(defaultProps.onUpdateServers).toHaveBeenCalledTimes(1);
+    expect(mockAddMCPServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('should surface an error and not keep an unsaved server when saving fails', async () => {
+    mockAddMCPServer.mockRejectedValue(new Error('boom'));
+    render(<MCPPanel {...defaultProps} />);
+
+    fireEvent.change(screen.getByPlaceholderText('MCP Server URL (e.g., http://localhost:3001)'), {
+      target: { value: 'http://localhost:3003' },
+    });
+    fireEvent.click(screen.getByText('Add'));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Failed to save MCP server/i)).toBeInTheDocument()
+    );
+    expect(defaultProps.onUpdateServers).not.toHaveBeenCalled();
+  });
+
+  it('should persist removal via DELETE', () => {
+    render(<MCPPanel {...defaultProps} />);
+    fireEvent.click(screen.getAllByTitle('Remove server')[0]);
+    expect(mockDeleteMCPServer).toHaveBeenLastCalledWith('server-1');
+  });
+
+  it('should persist toggle via PATCH', () => {
+    render(<MCPPanel {...defaultProps} />);
+    fireEvent.click(screen.getByRole('switch'));
+    expect(mockUpdateMCPServer).toHaveBeenLastCalledWith('server-1', { enabled: false });
+  });
+
+  it('should reconcile legacy localStorage ids with canonical DB ids by URL', async () => {
+    mockFetchMCPServers.mockResolvedValue([
+      { id: 'canonical-db-id', name: 'Test Server', url: 'http://localhost:3001' },
+    ]);
+    render(<MCPPanel {...defaultProps} />);
+
+    await waitFor(() =>
+      expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: 'canonical-db-id', url: 'http://localhost:3001' }),
+      ])
+    );
   });
 
   it('should not add server with empty URL', () => {
@@ -93,7 +168,7 @@ describe('MCPPanel', () => {
     const removeButtons = screen.getAllByTitle('Remove server');
     fireEvent.click(removeButtons[0]);
     
-    expect(defaultProps.onUpdateServers).toHaveBeenCalledWith([]);
+    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith([]);
   });
 
   it('should toggle server enabled state', () => {
@@ -102,7 +177,7 @@ describe('MCPPanel', () => {
     const toggleButton = screen.getByRole('switch');
     fireEvent.click(toggleButton);
     
-    expect(defaultProps.onUpdateServers).toHaveBeenCalledWith(
+    expect(defaultProps.onUpdateServers).toHaveBeenLastCalledWith(
       expect.arrayContaining([
         expect.objectContaining({ id: 'server-1', enabled: false }),
       ])

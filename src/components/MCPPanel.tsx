@@ -59,7 +59,6 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       status: 'disconnected',
       oauthEnabled: false,
     };
-    onUpdateServers([...servers, server]);
     setNewUrl('');
     setNewName('');
 
@@ -88,22 +87,62 @@ export default function MCPPanel({ servers, onUpdateServers, onClose, theme, set
       console.log('OAuth metadata not found, continuing without OAuth');
     }
     
-    // Save to D1 database
+    // Save to D1 database first — the DB is the source of truth for the id.
     try {
-      await apiClient.addMCPServer(server);
+      const saved = (await apiClient.addMCPServer({ ...server, id: undefined })) as { id?: string };
+      const canonicalId = typeof saved?.id === 'string' ? saved.id : undefined;
+      if (!canonicalId) throw new Error('Server response missing id');
+      const persisted: MCPServer = { ...server, id: canonicalId };
+      onUpdateServers([...servers, persisted]);
     } catch (error) {
       console.error('Failed to save MCP server to database:', error);
+      setAddError('Failed to save MCP server. Please try again.');
     }
-    
-    onUpdateServers([...servers, server]);
   };
+
+  // Reconcile legacy local-storage server ids with the DB list. A local id
+  // is replaced by the canonical DB id ONLY when exactly one DB row shares
+  // its URL. Ambiguous (duplicate-URL) or unmatched servers keep their local
+  // id untouched — never overwrite a canonical id or guess between duplicates
+  // (avoids registering against stale/unknown ids → 404).
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.fetchMCPServers()
+      .then((dbServers) => {
+        if (cancelled || !Array.isArray(dbServers)) return;
+        const urlCounts = new Map<string, number>();
+        for (const row of dbServers) {
+          urlCounts.set(row.url, (urlCounts.get(row.url) || 0) + 1);
+        }
+        const canonicalByUrl = new Map(
+          dbServers.map(s => [s.url, s.id] as const)
+        );
+        const reconciled = servers.map(s => {
+          // Preserve already-canonical and ambiguous/unmatched entries.
+          if (urlCounts.get(s.url) !== 1) return s;
+          const canonicalId = canonicalByUrl.get(s.url);
+          return canonicalId && canonicalId !== s.id
+            ? { ...s, id: canonicalId }
+            : s;
+        });
+        const hasChange = reconciled.some((s, i) => s.id !== servers[i].id);
+        if (hasChange) onUpdateServers(reconciled);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const removeServer = (id: string) => {
     onUpdateServers(servers.filter(s => s.id !== id));
+    apiClient.deleteMCPServer(id).catch(() => {});
   };
 
   const toggleServer = (id: string) => {
-    onUpdateServers(servers.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+    const updated = servers.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s);
+    onUpdateServers(updated);
+    const next = updated.find(s => s.id === id);
+    if (next) apiClient.updateMCPServer(id, { enabled: next.enabled }).catch(() => {});
   };
 
   const startOAuthFlow = async (serverId: string) => {

@@ -192,4 +192,40 @@ describe('ChatView', () => {
     
     expect(defaultProps.onSend).not.toHaveBeenCalled();
   });
+
+  describe('markdown live rendering', () => {
+    it('renders assistant messages as markdown', () => {
+      render(<ChatView
+        {...defaultProps}
+        messages={[{ id: 'md-1', role: 'assistant', content: '# Rendered\n\n**bold**', timestamp: Date.now() }]}
+      />);
+      expect(screen.getByRole('heading', { level: 1, name: 'Rendered' })).toBeInTheDocument();
+    });
+
+    it('keeps user messages as plain text', () => {
+      render(<ChatView
+        {...defaultProps}
+        messages={[{ id: 'md-2', role: 'user', content: '# not a heading' } as unknown as Message, ...mockMessages]}
+      />);
+      expect(screen.queryByRole('heading', { name: 'not a heading' })).toBeNull();
+    });
+
+    it('renders partial markdown while streaming (unclosed fence stays code)', async () => {
+      const { rerender } = render(<ChatView {...defaultProps} isLoading streamContent={"```js\nconst a = 1;"} />);
+      rerender(<ChatView {...defaultProps} isLoading streamContent={"```js\nconst a = 1;\nconst b = 2;\n```"} />);
+      expect(document.querySelector('pre code')).not.toBeNull();
+      // stream finished → final content flushes immediately
+      rerender(<ChatView {...defaultProps} isLoading={false} streamContent="" messages={[
+        { id: 'md-3', role: 'assistant', content: '```js\nconst a = 1;\nconst b = 2;\n```', timestamp: Date.now() },
+      ]} />);
+      expect(document.querySelector('pre code')).not.toBeNull();
+      expect(document.querySelector('pre code')?.textContent).toContain('const b = 2;');
+    });
+
+    it('escapes raw html in streamed content', async () => {
+      render(<ChatView {...defaultProps} isLoading streamContent="<b>x</b>" />);
+      expect(document.querySelector('b')).toBeNull();
+      expect(screen.getByText('<b>x</b>')).toBeInTheDocument();
+    });
+  });
 });

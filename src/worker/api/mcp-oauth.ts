@@ -263,7 +263,7 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
       const stateData = await db.prepare(
         'SELECT * FROM oauth_states WHERE state = ? AND expires_at > ?'
       ).bind(state, Date.now()).first() as any;
-      
+
       if (!stateData) {
         return c.json({ error: 'Invalid or expired state' }, 400);
       }
@@ -311,8 +311,9 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
           scope?: string;
         };
         
+        // Schema uses timestamp (seconds) mode; store epoch seconds
         const expiresAt = tokens.expires_in
-          ? Date.now() + tokens.expires_in * 1000
+          ? Math.floor(Date.now() / 1000) + tokens.expires_in
           : null;
         
         // Update server with tokens
@@ -326,7 +327,7 @@ export async function handleMCPOAuth(c: Context<{ Bindings: Env }>) {
           stateData.server_id
         ).run();
         
-        return c.json({ success: true });
+        return c.json({ success: true, serverId: stateData.server_id });
       } catch (error) {
         console.error('Token exchange failed:', error);
         return c.json({ error: 'Token exchange failed' }, 500);
@@ -383,5 +384,7 @@ function buildAuthorizationUrl(
     params.append('scope', scopes);
   }
   
-  return `${authEndpoint}?${params.toString()}`;
+  const url = new URL(authEndpoint);
+  params.forEach((value, key) => url.searchParams.set(key, value));
+  return url.toString();
 }
