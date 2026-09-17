@@ -179,6 +179,24 @@ function MessageBubble({ message, isDark, toolName }: { message: Message; isDark
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
 
+  // Tool-only assistant messages are protocol records, not empty chat bubbles.
+  // Keep their labels/usage visible while leaving the stored transcript intact.
+  if (message.role === 'assistant' && message.toolCalls?.length && !message.content.trim()) {
+    return (
+      <div role="group" aria-label="Tool calls" className="flex flex-wrap items-center gap-2 text-xs">
+        {message.toolCalls.map(call => (
+          <span key={call.id} className={`min-w-0 break-words rounded px-2 py-1 ${
+            isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700'
+          }`}>🔧 {toolLabel(call)}</span>
+        ))}
+        {message.usage && <span className={isDark ? 'text-gray-500' : 'text-gray-600'}
+          title={`${message.usage.prompt_tokens} prompt + ${message.usage.completion_tokens} completion`}>
+          {message.usage.total_tokens} tokens
+        </span>}
+      </div>
+    );
+  }
+
   if (isTool) {
     // Compact by default: the tool name stays in the header, the long body is
     // collapsed and expandable. Errors render expanded so they stay visible.

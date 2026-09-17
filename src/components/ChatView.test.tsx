@@ -35,6 +35,30 @@ describe('ChatView', () => {
     expect(screen.getByText('Hi there!')).toBeInTheDocument();
   });
 
+  it.each(['', ' \n\t'])('renders tool-only messages without an empty bubble or avatar (%j)', content => {
+    render(<ChatView {...defaultProps} messages={[{
+      id: 'call', role: 'assistant', content, timestamp: 1,
+      toolCalls: [{ id: 'c', name: 'easywebui_execute_tool', serverId: '',
+        arguments: { tool_id: '["s","notion-fetch"]' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+    }]} />);
+    const row = screen.getByRole('group', { name: 'Tool calls' });
+    expect(row).toHaveTextContent('notion-fetch (s)');
+    expect(row.querySelector('.markdown-body')).toBeNull();
+    expect(row.querySelector('svg')).toBeNull();
+    expect(screen.getByTitle('10 prompt + 2 completion')).toHaveTextContent('12 tokens');
+  });
+
+  it('keeps assistant text when a tool call also contains an explanation', () => {
+    render(<ChatView {...defaultProps} messages={[{
+      id: 'call', role: 'assistant', content: 'Fetching your page.', timestamp: 1,
+      toolCalls: [{ id: 'c', name: 'notion-fetch', serverId: 's', arguments: {} }],
+    }]} />);
+    expect(screen.getByText('Fetching your page.')).toBeVisible();
+    expect(document.querySelector('.markdown-body')).not.toBeNull();
+    expect(screen.queryByRole('group', { name: 'Tool calls' })).not.toBeInTheDocument();
+  });
+
   it('labels existing tool history and collapses full results without discarding content', () => {
     const body = 'Long tool output\n'.repeat(500);
     render(<ChatView {...defaultProps} messages={[
