@@ -11,7 +11,7 @@
     "test:run": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:migrate:prod": "wrangler d1 execute ai-chat-db --remote"
+    "db:migrate:prod": "drizzle-kit migrate --config=drizzle.d1.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

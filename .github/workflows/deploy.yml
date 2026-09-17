@@ -5,6 +5,11 @@ on:
     branches: [ai-chat-web-ui-development-7ac5e]
   workflow_dispatch:
 
+# Never run two migration/deployment sequences against the same D1 database.
+concurrency:
+  group: production-d1-deploy
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Type Check, Test & Build
@@ -21,7 +26,10 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: pnpm i
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check and test
+        run: pnpm run typecheck && pnpm run test:run
 
       - name: Build frontend with Pages Functions
         run: pnpm run build:main
@@ -61,10 +69,14 @@ jobs:
           name: build-artifacts
           path: .
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: pnpm/setup@v1
         with:
-          node-version: '24'
+          version: 11
+          runtime: node@24
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Install Wrangler
         run: npm install -g wrangler
@@ -73,15 +85,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          echo "Applying database migrations..."
-          for file in drizzle/*.sql; do
-            if [ -f "$file" ]; then
-              echo "Applying $file..."
-              wrangler d1 execute ai-chat-db --remote --file="$file" --yes
-            fi
-          done
-          echo "Database migrations applied successfully"
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+        run: pnpm run db:migrate:prod
 
       - name: Deploy to Cloudflare Pages
         env:

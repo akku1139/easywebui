@@ -101,19 +101,25 @@ npm run db:migrate
 
 #### 本番環境（Cloudflare D1）
 
-```bash
-npm run db:migrate:prod
-```
-
-または、個別のマイグレーションファイルを適用：
+Drizzle公式の[D1 HTTP APIガイド](https://orm.drizzle.team/docs/guides/d1-http-with-drizzle-kit)に従い、`drizzle.d1.config.ts` の `driver: 'd1-http'` と `drizzle-kit migrate` を使用します。
 
 ```bash
-wrangler d1 execute ai-chat-db --remote --file=./drizzle/<migration-file>.sql
+# D1 edit権限を持つトークンと対象DBを環境変数で指定
+export CLOUDFLARE_ACCOUNT_ID=...
+export D1_DATABASE_ID=...
+export CLOUDFLARE_API_TOKEN=...
+pnpm run db:migrate:prod
 ```
+
+ローカルの生成用設定とは分離しているため、`db:generate` やビルドには本番認証情報は不要です。
 
 ### GitHub Actionsでの自動マイグレーション
 
-`ai-chat-web-ui-development-7ac5e`ブランチへのデプロイ時に、GitHub Actionsが自動的に`drizzle/`ディレクトリ内のすべてのマイグレーションファイルをD1に適用します。
+`ai-chat-web-ui-development-7ac5e`ブランチへのデプロイ時に、固定lockfileでインストールしたDrizzle Kitがコミット済みの`drizzle/`（SQLと`meta/_journal.json`）を読み、`__drizzle_migrations`の履歴に基づき未適用分だけを実行します。成功後にPagesをデプロイし、失敗時はデプロイを停止します。同じ本番DBへの並列実行はconcurrencyで防止しています。
+
+**初回の注意**: 空のDBにはそのまま適用できます。旧方式でテーブルを作成したDBは、データが0件でも「空のスキーマ」ではなく、Drizzleの履歴がないと初期マイグレーションで衝突します。既存DBではバックアップ・スキーマ確認を行い、別途初期履歴の移行が必要です。CIはテーブルの自動削除、エラー無視、適用済み履歴の捏造は行いません。
+
+検証: `pnpm test:run src/test/migrations.test.ts` は実SQLite上で初回適用と再実行時のデータ保持を確認します（Node 24、外部DBアクセスなし）。
 
 ### 注意事項
 
